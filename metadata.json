@@ -1,0 +1,6 @@
+{
+  "name": "Gupta Lakhani & Associates",
+  "description": "Enterprise-grade employee attendance tracking with geofencing, role-based dashboards, secure messaging, tasks, and offline sync.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
