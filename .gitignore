@@ -16,3 +16,9 @@
 local.properties
 .env
 debug.keystore
+/backend/node_modules
+*.log
+OpenJDK*.tar.gz
+jdk-17.0.10+7/
+build_and_install.sh
+install_android_sdk.sh
