@@ -589,9 +589,7 @@ fun LoginSelectionScreen(
 
     // OTP verification flow
     var isVerifyingOtp by remember { mutableStateOf(false) }
-    var generatedOfficeOtp by remember { mutableStateOf("") }
-    var generatedRegOtp by remember { mutableStateOf("") }
-    var enteredOfficeOtp by remember { mutableStateOf("") }
+    var isRequestingOtp by remember { mutableStateOf(false) }
     var enteredRegOtp by remember { mutableStateOf("") }
     var otpError by remember { mutableStateOf("") }
 
@@ -700,26 +698,12 @@ fun LoginSelectionScreen(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // Office Email OTP Field
-            OutlinedTextField(
-                value = enteredOfficeOtp,
-                onValueChange = { if (it.length <= 6) enteredOfficeOtp = it },
-                label = { Text("Office Mail Verification PIN (6 digits)") },
-                placeholder = { Text("Enter office mail OTP") },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                leadingIcon = { Icon(Icons.Default.AdminPanelSettings, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth().testTag("office_otp_input")
-            )
-
-            Spacer(modifier = Modifier.height(14.dp))
-
             // Registered Email OTP Field
             OutlinedTextField(
                 value = enteredRegOtp,
                 onValueChange = { if (it.length <= 6) enteredRegOtp = it },
-                label = { Text("Registered Mail Verification PIN (6 digits)") },
-                placeholder = { Text("Enter registered mail OTP") },
+                label = { Text("Email Verification PIN (6 digits)") },
+                placeholder = { Text("Enter OTP received on email") },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 leadingIcon = { Icon(Icons.Default.Email, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
                 singleLine = true,
@@ -742,16 +726,16 @@ fun LoginSelectionScreen(
 
             Button(
                 onClick = {
-                    if (enteredOfficeOtp == generatedOfficeOtp && enteredRegOtp == generatedRegOtp) {
-                        otpError = ""
-                        viewModel.registerNewEmployee(
-                            name = regName,
-                            email = regEmail,
-                            department = regDept,
-                            password = regPassword,
-                            role = regRole,
-                            customId = if (regCustomId.isBlank()) null else regCustomId.trim()
-                        ) { registeredEmp ->
+                    otpError = ""
+                    viewModel.registerNewEmployee(
+                        name = regName,
+                        email = regEmail,
+                        department = regDept,
+                        password = regPassword,
+                        role = regRole,
+                        customId = if (regCustomId.isBlank()) null else regCustomId.trim(),
+                        otp = enteredRegOtp,
+                        onSuccess = { registeredEmp ->
                             val newProfile = DetailedProfile(
                                 id = registeredEmp.id,
                                 age = regAge.toIntOrNull() ?: calculateAge(regDob),
@@ -772,10 +756,11 @@ fun LoginSelectionScreen(
                                 "Sign up successful! Welcome, " + registeredEmp.name + ".",
                                 android.widget.Toast.LENGTH_LONG
                             ).show()
+                        },
+                        onError = { err ->
+                            otpError = err
                         }
-                    } else {
-                        otpError = "Incorrect OTPs. Please check the simulated codes below and try again."
-                    }
+                    )
                 },
                 modifier = Modifier
                     .fillMaxWidth()
@@ -785,40 +770,6 @@ fun LoginSelectionScreen(
                 Icon(Icons.Default.CheckCircle, contentDescription = null)
                 Spacer(modifier = Modifier.width(8.dp))
                 Text("Verify & Complete Registration", fontWeight = FontWeight.Bold, fontSize = 16.sp)
-            }
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            // Simulation Display Card
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
-                ),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
-            ) {
-                Column(modifier = Modifier.padding(14.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.DeveloperMode, contentDescription = null, tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "OFFICIAL DEMO MAIL SERVER (SIMULATOR)",
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.secondary
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text(
-                        text = "To: office@guptalakhani.com (Office Mail)\n" +
-                               "🔑 OFFICE OTP PIN: " + generatedOfficeOtp + "\n\n" +
-                               "To: " + regEmail + " (Registered Mail)\n" +
-                               "🔑 PERSONAL OTP PIN: " + generatedRegOtp,
-                        style = MaterialTheme.typography.bodySmall,
-                        fontFamily = FontFamily.Monospace,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
             }
 
         } else if (!isRegisterMode) {
@@ -890,14 +841,12 @@ fun LoginSelectionScreen(
 
             Button(
                 onClick = {
-                    val matchingUser = employees.find { it.id.equals(loginUserId.trim(), ignoreCase = true) }
-                    if (matchingUser == null) {
-                        loginError = "No account found with ID \"" + loginUserId + "\". Please ensure you typed your ID correctly, or Register as a new user."
-                    } else if (matchingUser.password != loginPassword) {
-                        loginError = "Incorrect password/passcode. Please try again."
-                    } else {
-                        loginError = ""
-                        viewModel.selectUserSession(matchingUser)
+                    viewModel.loginUser(loginUserId.trim(), loginPassword) { error, user ->
+                        if (error != null) {
+                            loginError = error
+                        } else if (user != null) {
+                            loginError = ""
+                        }
                     }
                 },
                 modifier = Modifier
@@ -1232,22 +1181,36 @@ fun LoginSelectionScreen(
                             return@Button
                         }
                         regError = ""
-                        // Generate random 6-digit OTPs
-                        generatedOfficeOtp = (100000..999999).random().toString()
-                        generatedRegOtp = (100000..999999).random().toString()
-                        enteredOfficeOtp = ""
                         enteredRegOtp = ""
-                        isVerifyingOtp = true
+                        isRequestingOtp = true
+                        viewModel.requestRegistrationOtp(regEmail) { success, msg ->
+                            isRequestingOtp = false
+                            if (success) {
+                                isVerifyingOtp = true
+                            } else {
+                                regError = msg
+                            }
+                        }
                     }
                 },
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(52.dp)
-                    .testTag("request_otp_button")
+                    .testTag("request_otp_button"),
+                enabled = !isRequestingOtp
             ) {
-                Icon(Icons.Default.VpnKey, contentDescription = null)
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("Generate 2FA Verification PINs", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                if (isRequestingOtp) {
+                    androidx.compose.material3.CircularProgressIndicator(
+                        modifier = Modifier.size(24.dp),
+                        color = MaterialTheme.colorScheme.onPrimary
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Sending PIN...", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                } else {
+                    Icon(Icons.Default.VpnKey, contentDescription = null)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Next", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                }
             }
 
             Spacer(modifier = Modifier.height(24.dp))

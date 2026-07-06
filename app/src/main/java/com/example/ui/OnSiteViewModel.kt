@@ -1260,6 +1260,24 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
         return encryptMessage(encryptedText) // ROT13 is symmetric
     }
 
+    fun requestRegistrationOtp(email: String, onResult: (Boolean, String) -> Unit) {
+        viewModelScope.launch {
+            try {
+                val response = com.example.api.ApiClient.authService.sendOtp(
+                    com.example.api.SendOtpRequest(email = email)
+                )
+                onResult(true, response.message)
+            } catch (e: retrofit2.HttpException) {
+                Log.e("OnSiteViewModel", "Failed to send OTP (HTTP ${e.code()})", e)
+                val errorBody = e.response()?.errorBody()?.string()
+                onResult(false, errorBody ?: "Failed to send OTP")
+            } catch (e: Exception) {
+                Log.e("OnSiteViewModel", "Failed to send OTP", e)
+                onResult(false, e.message ?: "Failed to send OTP")
+            }
+        }
+    }
+
     fun registerNewEmployee(
         name: String,
         email: String,
@@ -1267,36 +1285,59 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
         password: String = "1234",
         role: String = "Employee",
         customId: String? = null,
-        onSuccess: (Employee) -> Unit
+        otp: String,
+        onSuccess: (Employee) -> Unit,
+        onError: (String) -> Unit = {}
     ) {
         viewModelScope.launch {
-            val finalId = if (!customId.isNullOrBlank()) {
-                customId.trim()
-            } else {
-                val randomNum = (10..99).random()
-                val initials = name.split(" ").mapNotNull { it.firstOrNull() }.joinToString("").uppercase()
-                val cleanInitials = if (initials.length >= 2) initials.take(2) else (initials + "X").take(2)
-                if (role == "Manager") "CA-$cleanInitials-$randomNum" else "EMP-$cleanInitials-$randomNum"
-            }
-
-            val newEmp = Employee(
-                id = finalId,
-                name = name,
-                role = role,
-                email = email,
-                department = department,
-                status = "Absent",
-                lastCheckedIn = null,
-                password = password
-            )
-            repository.insertEmployees(listOf(newEmp))
-            selectUserSession(newEmp)
             try {
-                syncAllWithCloud()
+                val response = com.example.api.ApiClient.authService.register(
+                    com.example.api.RegisterRequest(
+                        email = email,
+                        password = password,
+                        full_name = name,
+                        role = role,
+                        department = department,
+                        custom_id = customId,
+                        otp = otp
+                    )
+                )
+                repository.insertEmployees(listOf(response.user))
+                selectUserSession(response.user)
+                onSuccess(response.user)
+            } catch (e: retrofit2.HttpException) {
+                Log.e("OnSiteViewModel", "API Registration failed", e)
+                try {
+                    val errorBody = e.response()?.errorBody()?.string()
+                    onError(errorBody ?: "Registration failed")
+                } catch (ex: Exception) {
+                    onError("Registration failed")
+                }
             } catch (e: Exception) {
-                Log.e("OnSiteViewModel", "Instant registration sync failed", e)
+                Log.e("OnSiteViewModel", "API Registration failed", e)
+                onError(e.message ?: "Network Error")
             }
-            onSuccess(newEmp)
+        }
+    }
+
+    fun loginUser(email: String, password: String, onResult: (String?, Employee?) -> Unit) {
+        viewModelScope.launch {
+            try {
+                val response = com.example.api.ApiClient.authService.login(
+                    com.example.api.LoginRequest(email = email, password = password)
+                )
+                repository.insertEmployees(listOf(response.user))
+                selectUserSession(response.user)
+                onResult(null, response.user)
+            } catch (e: retrofit2.HttpException) {
+                if (e.code() == 401) {
+                    onResult("Incorrect password or email.", null)
+                } else {
+                    onResult("Login failed: ${e.message()}", null)
+                }
+            } catch (e: Exception) {
+                onResult("Network error or server unavailable.", null)
+            }
         }
     }
 
