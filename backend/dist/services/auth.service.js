@@ -161,47 +161,6 @@ class AuthService {
             session: authData.session
         };
     }
-    async setup2FA(email) {
-        const userProfile = await this.userRepository.getUserByEmail(email);
-        if (!userProfile)
-            throw new Error('User not found');
-        const secret = authenticator.generateSecret();
-        await this.userRepository.update2FA(userProfile.auth_id, secret, false);
-        const otpauth = authenticator.keyuri(email, 'FirmSync', secret);
-        const qrCodeDataUrl = await qrcode_1.default.toDataURL(otpauth);
-        return {
-            secret,
-            qrCode: qrCodeDataUrl
-        };
-    }
-    async verify2FASetup(email, token) {
-        const userProfile = await this.userRepository.getUserByEmail(email);
-        if (!userProfile)
-            throw new Error('User not found');
-        if (!userProfile.totp_secret)
-            throw new Error('2FA not setup');
-        const isValid = authenticator.verify({ token, secret: userProfile.totp_secret });
-        if (!isValid)
-            throw new Error('Invalid 2FA code');
-        await this.userRepository.update2FA(userProfile.auth_id, userProfile.totp_secret, true);
-        return { success: true };
-    }
-    async verify2FALogin(email, password, token) {
-        const userProfile = await this.userRepository.getUserByEmail(email);
-        if (!userProfile || !userProfile.totp_secret)
-            throw new Error('User or 2FA not configured');
-        const isValid = authenticator.verify({ token, secret: userProfile.totp_secret });
-        if (!isValid)
-            throw new Error('Invalid 2FA code');
-        // Re-authenticate with Supabase to get the session securely
-        const { data: authData, error: authError } = await supabase_1.supabase.auth.signInWithPassword({ email, password });
-        if (authError || !authData.session)
-            throw new Error('Login failed');
-        return {
-            user: userProfile,
-            session: authData.session
-        };
-    }
     async sendOtp(email) {
         const normalizedEmail = email.trim().toLowerCase();
         // Generate a random 6-digit OTP
@@ -270,7 +229,7 @@ class AuthService {
         if (userError) {
             throw new Error('Failed to retrieve user data');
         }
-        const authUser = users.users.find(u => u.email?.toLowerCase() === normalizedEmail);
+        const authUser = users.users.find((u) => u.email?.toLowerCase() === normalizedEmail);
         if (!authUser) {
             throw new Error('User not found');
         }
@@ -284,6 +243,47 @@ class AuthService {
         // Clear OTP after successful use
         otpStore.delete(normalizedEmail);
         return { message: 'Password reset successfully' };
+    }
+    async setup2FA(email) {
+        const userProfile = await this.userRepository.getUserByEmail(email);
+        if (!userProfile)
+            throw new Error('User not found');
+        const secret = authenticator.generateSecret();
+        await this.userRepository.update2FA(userProfile.auth_id, secret, false);
+        const otpauth = authenticator.keyuri(email, 'FirmSync', secret);
+        const qrCodeDataUrl = await qrcode_1.default.toDataURL(otpauth);
+        return {
+            secret,
+            qrCode: qrCodeDataUrl
+        };
+    }
+    async verify2FASetup(email, token) {
+        const userProfile = await this.userRepository.getUserByEmail(email);
+        if (!userProfile)
+            throw new Error('User not found');
+        if (!userProfile.totp_secret)
+            throw new Error('2FA not setup');
+        const isValid = authenticator.verify({ token, secret: userProfile.totp_secret });
+        if (!isValid)
+            throw new Error('Invalid 2FA code');
+        await this.userRepository.update2FA(userProfile.auth_id, userProfile.totp_secret, true);
+        return { success: true };
+    }
+    async verify2FALogin(email, password, token) {
+        const userProfile = await this.userRepository.getUserByEmail(email);
+        if (!userProfile || !userProfile.totp_secret)
+            throw new Error('User or 2FA not configured');
+        const isValid = authenticator.verify({ token, secret: userProfile.totp_secret });
+        if (!isValid)
+            throw new Error('Invalid 2FA code');
+        // Re-authenticate with Supabase to get the session securely
+        const { data: authData, error: authError } = await supabase_1.supabase.auth.signInWithPassword({ email, password });
+        if (authError || !authData.session)
+            throw new Error('Login failed');
+        return {
+            user: userProfile,
+            session: authData.session
+        };
     }
 }
 exports.AuthService = AuthService;

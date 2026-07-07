@@ -6,8 +6,7 @@ class LeavesController {
     leavesService = new leaves_service_1.LeavesService();
     getLeaves = async (req, res) => {
         try {
-            const { employee_id } = req.query;
-            const data = await this.leavesService.getLeaves(employee_id);
+            const data = await this.leavesService.getLeaves();
             res.status(200).json(data);
         }
         catch (error) {
