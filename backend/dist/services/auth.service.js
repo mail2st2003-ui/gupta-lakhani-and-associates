@@ -54,8 +54,18 @@ const otpStore = new Map();
 class AuthService extends base_service_1.BaseService {
     userRepository = new user_repository_1.UserRepository();
     async registerUser(data) {
-        const { email, password, first_name, last_name, role, designation, custom_id, otp, dob, father_name, mother_name, permanent_address, contact, blood_group } = data;
+        const { email, password, full_name, first_name, middle_name, last_name, role, designation, department, custom_id, otp, dob, father_name, fathers_name, mother_name, mothers_name, permanent_address, address, current_address, contact, phone, emergency_contact, blood_group } = data;
         const normalizedEmail = email.trim().toLowerCase();
+        const nameParts = String(full_name || '').trim().split(/\s+/).filter(Boolean);
+        const resolvedFirstName = first_name || nameParts[0] || '';
+        const resolvedLastName = last_name || (nameParts.length > 1 ? nameParts[nameParts.length - 1] : '');
+        const resolvedMiddleName = middle_name || (nameParts.length > 2 ? nameParts.slice(1, -1).join(' ') : '');
+        const resolvedFatherName = father_name || fathers_name || '';
+        const resolvedMotherName = mother_name || mothers_name || '';
+        const resolvedPermanentAddress = permanent_address || address || '';
+        const resolvedCurrentAddress = current_address || resolvedPermanentAddress;
+        const resolvedContact = contact || phone || '';
+        const resolvedDesignation = designation || department || '';
         // Validate OTP
         const stored = otpStore.get(normalizedEmail);
         if (!stored) {
@@ -89,23 +99,46 @@ class AuthService extends base_service_1.BaseService {
             await this.userRepository.createDetailedProfile({
                 uuid: this.generateUUID(),
                 user_uuid: userUuid,
-                first_name: first_name || '',
-                last_name: last_name || '',
+                first_name: resolvedFirstName,
+                middle_name: resolvedMiddleName,
+                last_name: resolvedLastName,
                 dob: dob || '',
-                father_name: father_name || '',
-                mother_name: mother_name || '',
-                permanent_address: permanent_address || '',
-                current_address: permanent_address || '',
-                contact: contact || '',
+                father_name: resolvedFatherName,
+                mother_name: resolvedMotherName,
+                permanent_address: resolvedPermanentAddress,
+                current_address: resolvedCurrentAddress,
+                contact: resolvedContact,
                 official_email: normalizedEmail,
+                personal_email: normalizedEmail,
                 blood_group: blood_group || '',
-                designation: designation || ''
+                designation: resolvedDesignation
             });
         }
         catch (profileError) {
             console.error('Failed to create detailed profile:', profileError);
         }
         return newUser;
+    }
+    async updateProfile(userUuid, profileData) {
+        return this.userRepository.upsertDetailedProfile({
+            uuid: profileData.uuid || this.generateUUID(),
+            user_uuid: userUuid,
+            first_name: profileData.first_name || '',
+            middle_name: profileData.middle_name || '',
+            last_name: profileData.last_name || '',
+            father_name: profileData.father_name || '',
+            mother_name: profileData.mother_name || '',
+            dob: profileData.dob || '',
+            gender: profileData.gender || '',
+            blood_group: profileData.blood_group || '',
+            contact: profileData.contact || '',
+            official_email: profileData.official_email || '',
+            personal_email: profileData.personal_email || '',
+            permanent_address: profileData.permanent_address || '',
+            current_address: profileData.current_address || '',
+            profile_image: profileData.profile_image || null,
+            designation: profileData.designation || ''
+        });
     }
     async loginUser(data) {
         const { email, password } = data;

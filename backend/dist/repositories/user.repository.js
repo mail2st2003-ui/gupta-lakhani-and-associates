@@ -43,6 +43,16 @@ class UserRepository {
             throw error;
         return data;
     }
+    async upsertDetailedProfile(profileData) {
+        const { data, error } = await supabase_1.supabase
+            .from('user_details')
+            .upsert([profileData], { onConflict: 'user_uuid' })
+            .select()
+            .single();
+        if (error)
+            throw error;
+        return data;
+    }
     async update2FA(uuid, isEnabled) {
         const { error } = await supabase_1.supabase
             .from('users')

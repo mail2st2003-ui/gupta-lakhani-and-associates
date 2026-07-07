@@ -45,6 +45,17 @@ export class UserRepository {
     return data;
   }
 
+  async upsertDetailedProfile(profileData: any) {
+    const { data, error } = await supabase
+      .from('user_details')
+      .upsert([profileData], { onConflict: 'user_uuid' })
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  }
+
   async update2FA(uuid: string, isEnabled: boolean) {
     const { error } = await supabase
       .from('users')

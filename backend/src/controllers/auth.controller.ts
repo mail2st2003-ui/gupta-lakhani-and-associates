@@ -20,6 +20,16 @@ export class AuthController {
     }
   };
 
+  updateProfile = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const userUuid = String(req.params.userUuid);
+      const data = await this.authService.updateProfile(userUuid, req.body);
+      res.status(200).json({ message: 'Profile updated successfully', profile: data });
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  };
+
   login = async (req: Request, res: Response): Promise<void> => {
     try {
       const errors = validationResult(req);

@@ -11,6 +11,7 @@ router.post('/register', [
     (0, express_validator_1.body)('full_name').notEmpty().withMessage('Full name is required'),
     (0, express_validator_1.body)('otp').notEmpty().withMessage('OTP is required')
 ], authController.register);
+router.put('/profile/:userUuid', authController.updateProfile);
 router.post('/login', [
     (0, express_validator_1.body)('email').isEmail().withMessage('Valid email is required'),
     (0, express_validator_1.body)('password').notEmpty().withMessage('Password is required')

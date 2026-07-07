@@ -63,6 +63,8 @@ data class TodoItem(
     val is_completed: Boolean = false,
     val status: String = "Pending",
     val timestamp: Long = System.currentTimeMillis(),
+    val is_personal: Boolean = true,
+    val assigned_by: String = "",
     val isSynced: Boolean = false
 )
 
@@ -110,8 +112,8 @@ data class SystemAlert(
 data class LeaveRequest(
     @PrimaryKey val uuid: String = java.util.UUID.randomUUID().toString(),
     val user_uuid: String,
-    val start_date: Long,
-    val end_date: Long,
+    val start_date: String,
+    val end_date: String,
     val reason: String,
     val status: String = "Pending", // "Pending", "Accepted", "Rejected"
     val timestamp: Long = System.currentTimeMillis(),

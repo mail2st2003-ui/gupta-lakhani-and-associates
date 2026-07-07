@@ -1011,6 +1011,7 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
                 is_completed = false,
                 isSynced = !_isOfflineMode.value,
                 status = "Incomplete",
+                is_personal = true,
             )
             try {
                 if (!_isOfflineMode.value) {
@@ -1032,7 +1033,9 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
                 description = description,
                 priority = priority,
                 is_completed = false,
-                status = "Pending",
+                status = "Incomplete",
+                is_personal = false,
+                assigned_by = assignedBy,
                 isSynced = !_isOfflineMode.value
             )
             try {
@@ -1058,6 +1061,7 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
                 is_completed = false,
                 isSynced = !_isOfflineMode.value,
                 status = "Incomplete",
+                is_personal = true,
             )
             try {
                 if (!_isOfflineMode.value) {
@@ -1279,29 +1283,45 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
     ) {
         viewModelScope.launch {
             try {
+                val nameParts = name.trim().split(Regex("\\s+")).filter { it.isNotBlank() }
+                val firstName = nameParts.firstOrNull() ?: name.trim()
+                val lastName = if (nameParts.size > 1) nameParts.last() else ""
+                val middleName = if (nameParts.size > 2) nameParts.drop(1).dropLast(1).joinToString(" ") else null
+
                 val response = com.example.api.ApiClient.authService.register(
                     com.example.api.RegisterRequest(
                         email = email,
                         password = password,
                         full_name = name,
+                        first_name = firstName,
+                        middle_name = middleName,
+                        last_name = lastName,
                         role = role,
-                        department = department,
+                        designation = department,
                         custom_id = customId,
                         otp = otp,
                         age = age,
                         dob = dob,
-                        fathers_name = fathersName,
-                        mothers_name = mothersName,
-                        address = address,
-                        phone = phone,
+                        father_name = fathersName,
+                        mother_name = mothersName,
+                        permanent_address = address,
+                        current_address = address,
+                        contact = phone,
                         emergency_contact = emergencyContact,
                         doj = doj,
                         blood_group = bloodGroup
                     )
                 )
-                repository.insertEmployees(listOf(response.user))
-                selectUserSession(response.user)
-                onSuccess(response.user)
+                val registeredUser = response.user.copy(
+                    first_name = firstName,
+                    last_name = lastName,
+                    designation = department,
+                    contact = phone,
+                    password = password
+                )
+                repository.insertEmployees(listOf(registeredUser))
+                selectUserSession(registeredUser)
+                onSuccess(registeredUser)
             } catch (e: retrofit2.HttpException) {
                 Log.e("OnSiteViewModel", "API Registration failed", e)
                 try {
@@ -1370,8 +1390,8 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch {
             val request = LeaveRequest(
                 user_uuid = user.uuid,
-                start_date = startDate.toLongOrNull() ?: 0L,
-                end_date = endDate.toLongOrNull() ?: 0L,
+                start_date = startDate,
+                end_date = endDate,
                 reason = reason,
                 status = "Pending",
                 isSynced = !_isOfflineMode.value
@@ -1408,6 +1428,27 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
             if (emp != null) {
                 val updated = emp.copy(profile_image = photoBase64)
                 repository.updateEmployee(updated)
+                val existingProfile = repository.getAllUserDetailsDirect().find { it.user_uuid == employeeId }
+                val updatedProfile = existingProfile?.copy(profile_image = photoBase64) ?: UserDetails(
+                    uuid = employeeId,
+                    user_uuid = employeeId,
+                    first_name = emp.first_name ?: "",
+                    middle_name = null,
+                    last_name = emp.last_name ?: "",
+                    father_name = "",
+                    mother_name = "",
+                    dob = "",
+                    gender = "",
+                    blood_group = "",
+                    contact = emp.contact ?: "",
+                    official_email = emp.email,
+                    personal_email = emp.email,
+                    permanent_address = "",
+                    current_address = "",
+                    profile_image = photoBase64,
+                    designation = emp.designation ?: ""
+                )
+                saveUserDetails(updatedProfile)
                 if (_currentUser.value?.uuid == employeeId) {
                     _currentUser.value = updated
                 }
@@ -1422,6 +1463,14 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
     fun saveUserDetails(profile: UserDetails) {
         viewModelScope.launch {
             repository.saveUserDetails(profile)
+            if (!_isOfflineMode.value) {
+                try {
+                    com.example.api.ApiClient.authService.updateProfile(profile.user_uuid, profile)
+                } catch (e: Exception) {
+                    Log.e("OnSiteViewModel", "Failed to sync user profile", e)
+                    _syncStatus.value = "Failed to sync profile. Saved offline."
+                }
+            }
         }
     }
 
@@ -1429,7 +1478,14 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch {
             val emp = repository.getEmployeeById(employeeId)
             if (emp != null) {
-                val updated = emp.copy(email = email, designation = department, password = password)
+                val nameParts = name.trim().split(Regex("\\s+")).filter { it.isNotBlank() }
+                val updated = emp.copy(
+                    email = email,
+                    designation = department,
+                    password = password,
+                    first_name = nameParts.firstOrNull() ?: name.trim(),
+                    last_name = if (nameParts.size > 1) nameParts.last() else ""
+                )
                 repository.updateEmployee(updated)
                 if (_currentUser.value?.uuid == employeeId) {
                     _currentUser.value = updated

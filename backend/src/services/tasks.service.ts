@@ -1,54 +1,91 @@
+import { randomUUID } from 'crypto';
 import { supabase } from '../config/supabase';
 
 export class TasksService {
   async getTasks(employeeId?: string) {
-    let query = supabase.from('todo_items').select('*').order('timestamp', { ascending: false });
+    let query = supabase
+      .from('tasks')
+      .select('*, task_details(*)')
+      .order('created_at', { ascending: false });
+
     if (employeeId) {
-      query = query.eq('employee_id', employeeId);
+      query = query.eq('assigned_to_user_uuid', employeeId);
     }
+
     const { data, error } = await query;
     if (error) throw error;
     return data;
   }
 
   async createTask(taskData: any) {
-    const dbData = {
-      id: taskData.id,
-      employee_id: taskData.employeeId,
-      title: taskData.title,
-      description: taskData.description,
-      priority: taskData.priority,
-      status: taskData.status,
-      is_completed: taskData.isCompleted,
-      is_approved: taskData.isApproved,
-      timestamp: taskData.timestamp,
-      is_personal: taskData.isPersonal,
-      assigned_by: taskData.assignedBy
+    const isPersonal = taskData.is_personal ?? taskData.isPersonal ?? true;
+
+    if (isPersonal) {
+      const todoData = {
+        uuid: taskData.uuid || taskData.id,
+        user_uuid: taskData.user_uuid || taskData.employeeId,
+        title: taskData.title,
+        description: taskData.description || '',
+        priority: taskData.priority || 'Medium',
+        status: taskData.status || 'Pending',
+        is_completed: taskData.is_completed ?? taskData.isCompleted ?? false,
+        timestamp: taskData.timestamp || Date.now()
+      };
+
+      const { data, error } = await supabase
+        .from('todos')
+        .insert([todoData])
+        .select()
+        .single();
+      if (error) throw error;
+      return data;
+    }
+
+    const taskUuid = taskData.uuid || taskData.id;
+    const taskRecord = {
+      uuid: taskUuid,
+      created_by_user_uuid: taskData.assigned_by || taskData.assignedBy || null,
+      assigned_to_user_uuid: taskData.user_uuid || taskData.employeeId
     };
-    const { data, error } = await supabase
-      .from('todo_items')
-      .insert([dbData])
+
+    const { data: createdTask, error: taskError } = await supabase
+      .from('tasks')
+      .insert([taskRecord])
       .select()
       .single();
-    if (error) throw error;
-    return data;
+    if (taskError) throw taskError;
+
+    const detailsRecord = {
+      uuid: taskData.details_uuid || randomUUID(),
+      task_uuid: taskUuid,
+      title: taskData.title,
+      description: taskData.description || '',
+      status: taskData.status || 'Pending',
+      priority: taskData.priority || 'Medium',
+      due_date: taskData.due_date || taskData.timestamp || Date.now()
+    };
+
+    const { data: details, error: detailsError } = await supabase
+      .from('task_details')
+      .insert([detailsRecord])
+      .select()
+      .single();
+    if (detailsError) throw detailsError;
+
+    return { ...createdTask, task_details: details };
   }
 
   async updateTask(taskId: string, updateData: any) {
     const dbData: any = {};
+    if (updateData.status !== undefined) dbData.status = updateData.status;
+    if (updateData.priority !== undefined) dbData.priority = updateData.priority;
     if (updateData.title !== undefined) dbData.title = updateData.title;
     if (updateData.description !== undefined) dbData.description = updateData.description;
-    if (updateData.priority !== undefined) dbData.priority = updateData.priority;
-    if (updateData.status !== undefined) dbData.status = updateData.status;
-    if (updateData.isCompleted !== undefined) dbData.is_completed = updateData.isCompleted;
-    if (updateData.isApproved !== undefined) dbData.is_approved = updateData.isApproved;
-    if (updateData.isPersonal !== undefined) dbData.is_personal = updateData.isPersonal;
-    if (updateData.assignedBy !== undefined) dbData.assigned_by = updateData.assignedBy;
 
     const { data, error } = await supabase
-      .from('todo_items')
+      .from('task_details')
       .update(dbData)
-      .eq('id', taskId)
+      .eq('task_uuid', taskId)
       .select()
       .single();
     if (error) throw error;
@@ -57,9 +94,9 @@ export class TasksService {
 
   async deleteTask(taskId: string) {
     const { error } = await supabase
-      .from('todo_items')
+      .from('tasks')
       .delete()
-      .eq('id', taskId);
+      .eq('uuid', taskId);
     if (error) throw error;
     return { message: 'Task deleted successfully' };
   }

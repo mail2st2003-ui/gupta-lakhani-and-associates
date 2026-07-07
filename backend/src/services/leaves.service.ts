@@ -1,10 +1,10 @@
 import { supabase } from '../config/supabase';
 
 export class LeavesService {
-  async getLeaves(employeeId?: string) {
-    let query = supabase.from('leave_requests').select('*').order('timestamp', { ascending: false });
-    if (employeeId) {
-      query = query.eq('employee_id', employeeId);
+  async getLeaves(userUuid?: string) {
+    let query = supabase.from('leave_requests').select('*').order('created_at', { ascending: false });
+    if (userUuid) {
+      query = query.eq('user_uuid', userUuid);
     }
     const { data, error } = await query;
     if (error) throw error;
@@ -12,21 +12,20 @@ export class LeavesService {
   }
 
   async createLeave(leaveData: any) {
-    const dbData = {
-      id: leaveData.id,
-      employee_id: leaveData.employeeId,
-      employee_name: leaveData.employeeName,
-      employee_role: leaveData.employeeRole,
-      recipient_ids: leaveData.recipientIds,
-      recipient_names: leaveData.recipientNames,
+    const dbData: any = {
+      uuid: leaveData.uuid || leaveData.id,
+      user_uuid: leaveData.user_uuid || leaveData.employeeId,
       reason: leaveData.reason,
-      start_date: leaveData.startDate,
-      end_date: leaveData.endDate,
-      status: leaveData.status,
-      timestamp: leaveData.timestamp,
-      response_comment: leaveData.responseComment,
-      responded_by: leaveData.respondedBy
+      start_date: leaveData.start_date || leaveData.startDate,
+      end_date: leaveData.end_date || leaveData.endDate,
+      status: leaveData.status || 'Pending',
+      timestamp: leaveData.timestamp || Date.now(),
+      comment: leaveData.comment || leaveData.responseComment || ''
     };
+
+    const managerUuid = leaveData.manager_uuid || leaveData.managerUuid;
+    if (managerUuid) dbData.manager_uuid = managerUuid;
+
     const { data, error } = await supabase
       .from('leave_requests')
       .insert([dbData])
@@ -36,16 +35,16 @@ export class LeavesService {
     return data;
   }
 
-  async updateLeave(leaveId: string, updateData: any) {
+  async updateLeave(leaveUuid: string, updateData: any) {
     const dbData: any = {};
     if (updateData.status !== undefined) dbData.status = updateData.status;
-    if (updateData.responseComment !== undefined) dbData.response_comment = updateData.responseComment;
-    if (updateData.respondedBy !== undefined) dbData.responded_by = updateData.respondedBy;
+    if (updateData.comment !== undefined) dbData.comment = updateData.comment;
+    if (updateData.manager_uuid !== undefined) dbData.manager_uuid = updateData.manager_uuid || null;
 
     const { data, error } = await supabase
       .from('leave_requests')
       .update(dbData)
-      .eq('id', leaveId)
+      .eq('uuid', leaveUuid)
       .select()
       .single();
     if (error) throw error;

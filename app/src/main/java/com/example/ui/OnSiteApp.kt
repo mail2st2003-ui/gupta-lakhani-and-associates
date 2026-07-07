@@ -595,7 +595,8 @@ fun LoginSelectionScreen(
     var regAddress by remember { mutableStateOf("") }
     var regEmergencyContact by remember { mutableStateOf("") }
     var regDoj by remember { mutableStateOf("2026-07-01") }
-    var regBloodGroup by remember { mutableStateOf("O+") }
+    var regBloodGroup by remember { mutableStateOf("") }
+    var bloodGroupExpanded by remember { mutableStateOf(false) }
 
     var showCalendarForField by remember { mutableStateOf<String?>(null) }
 
@@ -610,6 +611,23 @@ fun LoginSelectionScreen(
         "Partner",
         "Staff"
     )
+    val bloodGroups = listOf("A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-")
+    val registrationValidationError = when {
+        regName.isBlank() -> "Full Name is mandatory."
+        regCustomId.isBlank() -> "User ID / Username is mandatory."
+        regEmail.isBlank() -> "Personal Email Address is mandatory."
+        !regEmail.contains("@") || !regEmail.contains(".") -> "Please enter a valid personal email address."
+        regMobile.length != 10 -> "Mobile Number must be exactly 10 digits."
+        regDob.isBlank() -> "Date of Birth is mandatory."
+        calculateAge(regDob) < 16 -> "Minimum age for registration is 16 years."
+        regFathersName.trim().length < 3 -> "Father's Name must be at least 3 letters."
+        regMothersName.trim().length < 3 -> "Mother's Name must be at least 3 letters."
+        regAddress.trim().length < 15 -> "Permanent Address must be at least 15 letters long."
+        regEmergencyContact.length != 10 -> "Emergency Contact Number must be exactly 10 digits."
+        regBloodGroup.isBlank() -> "Blood Group is mandatory."
+        regPassword.length < 6 -> "Password must be at least 6 characters long."
+        else -> null
+    }
 
     val context = LocalContext.current
 
@@ -766,24 +784,25 @@ fun LoginSelectionScreen(
                         bloodGroup = regBloodGroup,
                         onSuccess = { registeredEmp ->
                             isRegistering = false
+                            val nameParts = regName.trim().split(Regex("\\s+")).filter { it.isNotBlank() }
                             val newProfile = UserDetails(
                                 uuid = registeredEmp.uuid,
                                 user_uuid = registeredEmp.uuid,
-                                first_name = regName,
-                                middle_name = null,
-                                last_name = "",
-                                father_name = regFathersName,
-                                mother_name = regMothersName,
+                                first_name = nameParts.firstOrNull() ?: regName.trim(),
+                                middle_name = if (nameParts.size > 2) nameParts.drop(1).dropLast(1).joinToString(" ") else null,
+                                last_name = if (nameParts.size > 1) nameParts.last() else "",
+                                father_name = regFathersName.trim(),
+                                mother_name = regMothersName.trim(),
                                 dob = regDob,
                                 gender = "",
                                 blood_group = regBloodGroup,
                                 contact = regMobile,
-                                official_email = regEmail,
-                                personal_email = "",
-                                permanent_address = regAddress,
-                                current_address = regEmergencyContact,
+                                official_email = regEmail.trim(),
+                                personal_email = regEmail.trim(),
+                                permanent_address = regAddress.trim(),
+                                current_address = regAddress.trim(),
                                 profile_image = null,
-                                designation = ""
+                                designation = regDept
                             )
                             viewModel.saveUserDetails(newProfile)
 
@@ -1207,15 +1226,39 @@ fun LoginSelectionScreen(
                     )
 
                     // Blood Group Field
-                    OutlinedTextField(
-                        value = regBloodGroup,
-                        onValueChange = { regBloodGroup = it },
-                        label = { Text("Blood Group *") },
-                        placeholder = { Text("e.g. O+, A+, B+") },
-                        leadingIcon = { Icon(Icons.Default.Bloodtype, contentDescription = null) },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth().testTag("reg_blood_input")
-                    )
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        OutlinedTextField(
+                            value = regBloodGroup,
+                            onValueChange = {},
+                            label = { Text("Blood Group *") },
+                            placeholder = { Text("Select blood group") },
+                            readOnly = true,
+                            leadingIcon = { Icon(Icons.Default.Bloodtype, contentDescription = null) },
+                            trailingIcon = {
+                                IconButton(onClick = { bloodGroupExpanded = true }) {
+                                    Icon(Icons.Default.ArrowDropDown, contentDescription = "Choose Blood Group")
+                                }
+                            },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth().clickable { bloodGroupExpanded = true }.testTag("reg_blood_input")
+                        )
+                        DropdownMenu(
+                            expanded = bloodGroupExpanded,
+                            onDismissRequest = { bloodGroupExpanded = false },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            bloodGroups.forEach { group ->
+                                DropdownMenuItem(
+                                    text = { Text(group) },
+                                    onClick = {
+                                        regBloodGroup = group
+                                        bloodGroupExpanded = false
+                                        regError = ""
+                                    }
+                                )
+                            }
+                        }
+                    }
                 }
             }
 
@@ -1225,7 +1268,7 @@ fun LoginSelectionScreen(
             OutlinedTextField(
                 value = regPassword,
                 onValueChange = { regPassword = it },
-                label = { Text("Secure Login Passcode (e.g. 1234)") },
+                label = { Text("Secure Login Password (minimum 6 characters) *") },
                 placeholder = { Text("Choose a password") },
                 leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) },
                 trailingIcon = {
@@ -1242,10 +1285,11 @@ fun LoginSelectionScreen(
                 modifier = Modifier.fillMaxWidth().testTag("reg_password_input")
             )
 
-            if (regError.isNotEmpty()) {
+            val registrationMessage = regError.ifBlank { registrationValidationError ?: "" }
+            if (registrationMessage.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(12.dp))
                 Text(
-                    text = regError,
+                    text = registrationMessage,
                     color = MaterialTheme.colorScheme.error,
                     style = MaterialTheme.typography.bodySmall,
                     fontWeight = FontWeight.Bold,
@@ -1257,17 +1301,8 @@ fun LoginSelectionScreen(
 
             Button(
                 onClick = {
-                    if (regName.isBlank() || regEmail.isBlank() || regMobile.isBlank() || regPassword.isBlank() || regCustomId.isBlank() ||
-                        regDob.isBlank() || regFathersName.isBlank() || regMothersName.isBlank() || regAddress.isBlank() || regEmergencyContact.isBlank() || regBloodGroup.isBlank()) {
-                        regError = "Please fill in all personal details and columns, including User ID / Username."
-                    } else if (!regEmail.contains("@") or !regEmail.contains(".")) {
-                        regError = "Please enter a valid personal email address."
-                    } else if (regPassword.length < 4) {
-                        regError = "Password must be at least 4 characters long."
-                    } else if (regMobile.length != 10) {
-                        regError = "Mobile Number must be exactly 10 digits."
-                    } else if (regEmergencyContact.length != 10) {
-                        regError = "Emergency Contact Number must be exactly 10 digits."
+                    if (registrationValidationError != null) {
+                        regError = registrationValidationError
                     } else {
                         val trimmedCustomId = regCustomId.trim()
                         val alreadyExists = employees.any { it.uuid.equals(trimmedCustomId, ignoreCase = true) }
@@ -1292,7 +1327,7 @@ fun LoginSelectionScreen(
                     .fillMaxWidth()
                     .height(52.dp)
                     .testTag("request_otp_button"),
-                enabled = !isRequestingOtp
+                enabled = !isRequestingOtp && registrationValidationError == null
             ) {
                 if (isRequestingOtp) {
                     androidx.compose.material3.CircularProgressIndicator(
@@ -2463,8 +2498,8 @@ fun EmployeeTasksScreen(viewModel: OnSiteViewModel, currentUser: Employee) {
     var selectedSubTab by remember { mutableStateOf(0) } // 0 = Assigned Tasks, 1 = My Personal To-Dos
     var showAddTaskDialog by remember { mutableStateOf(false) } // For personal to-do list
     
-    val assignedTasks = tasks
-    val personalTasks = emptyList<com.example.data.TodoItem>()
+    val assignedTasks = tasks.filter { !it.is_personal }
+    val personalTasks = tasks.filter { it.is_personal }
     
     Column(
         modifier = Modifier
@@ -3000,7 +3035,7 @@ fun TalkToScreen(viewModel: OnSiteViewModel, currentUser: Employee, isManager: B
 
                                     Column {
                                         Text(
-                                            text = (user.first_name ?: ""),
+                                            text = user.first_name ?: "",
                                             style = MaterialTheme.typography.bodyMedium,
                                             fontWeight = FontWeight.Bold
                                         )
@@ -5096,11 +5131,12 @@ fun ManagerTasksDashboard(viewModel: OnSiteViewModel, currentUser: Employee) {
     var showAssignDialog by remember { mutableStateOf(false) }
     val writtenClarifications = remember { mutableStateMapOf<String, String>() }
     
-    val pendingApprovals = allTasks.filter { it.is_completed && !false }
+    val assignedTasks = allTasks.filter { !it.is_personal }
+    val pendingApprovals = assignedTasks.filter { it.is_completed }
 
-    val doubtTasks = allTasks.filter { it.status == "Have a Doubt" }
-    val activeTasks = allTasks.filter { it.status == "Incomplete" }
-    val approvedTasks = allTasks.filter { false }
+    val doubtTasks = assignedTasks.filter { it.status == "Have a Doubt" }
+    val activeTasks = assignedTasks.filter { it.status == "Incomplete" }
+    val approvedTasks = assignedTasks.filter { it.status == "Complete" }
     
     Column(
         modifier = Modifier
@@ -6689,20 +6725,20 @@ fun MyProfileScreen(viewModel: OnSiteViewModel, user: Employee) {
     // Initialize/Update text states when entering edit mode or when profile changes
     LaunchedEffect(isEditing, profile, user) {
         if (isEditing) {
-            editAge = "".toString()
+            editAge = calculateAge(profile.dob).takeIf { it > 0 }?.toString() ?: ""
             editDob = profile.dob
-            editFathersName = ""
-            editMothersName = ""
-            editAddress = ""
-            editPhone = ""
-            editEmail = ""
-            editEmergencyContact = ""
+            editFathersName = profile.father_name
+            editMothersName = profile.mother_name
+            editAddress = profile.permanent_address
+            editPhone = profile.contact.ifBlank { user.contact ?: "" }
+            editEmail = profile.official_email.ifBlank { user.email }
+            editEmergencyContact = profile.current_address
             editDoj = ""
-            editBloodGroup = ""
+            editBloodGroup = profile.blood_group
 
             // Core Employee fields
-            editName = (user.first_name ?: "")
-            editDept = (user.designation ?: "")
+            editName = listOf(profile.first_name, profile.middle_name ?: "", profile.last_name).filter { it.isNotBlank() }.joinToString(" ").ifBlank { user.first_name ?: "" }
+            editDept = profile.designation.ifBlank { user.designation ?: "" }
             editPassword = user.password
         }
     }
@@ -6841,8 +6877,8 @@ fun MyProfileScreen(viewModel: OnSiteViewModel, user: Employee) {
                                 official_email = editEmail,
                                 personal_email = "",
                                 permanent_address = editAddress,
-                                current_address = "",
-                                profile_image = "",
+                                current_address = editEmergencyContact,
+                                profile_image = profile.profile_image,
                                 designation = editDept
                             )
                             viewModel.saveUserDetails(updatedProfile)
@@ -7043,34 +7079,34 @@ fun MyProfileScreen(viewModel: OnSiteViewModel, user: Employee) {
         } else {
             // PERSONAL DETAILS CARD
             ProfileSectionCard(title = "Personal Information", icon = Icons.Default.Person) {
-                ProfileRow(label = "Age", value = "${""} Years")
+                ProfileRow(label = "Age", value = calculateAge(profile.dob).takeIf { it > 0 }?.let { "$it Years" } ?: "")
                 Divider(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
                 ProfileRow(label = "Date of Birth (DOB)", value = profile.dob)
                 Divider(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-                ProfileRow(label = "Blood Group", value = "")
+                ProfileRow(label = "Blood Group", value = profile.blood_group)
             }
 
             // FAMILY DETAILS CARD
             ProfileSectionCard(title = "Family Details", icon = Icons.Default.Groups) {
-                ProfileRow(label = "Father's Name", value = "")
+                ProfileRow(label = "Father's Name", value = profile.father_name)
                 Divider(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-                ProfileRow(label = "Mother's Name", value = "")
+                ProfileRow(label = "Mother's Name", value = profile.mother_name)
             }
 
             // CONTACT DETAILS CARD
             ProfileSectionCard(title = "Contact & Address Details", icon = Icons.Default.Business) {
-                ProfileRow(label = "Mobile Number", value = "")
+                ProfileRow(label = "Mobile Number", value = profile.contact.ifBlank { user.contact ?: "" })
                 Divider(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-                ProfileRow(label = "Official Email", value = "")
+                ProfileRow(label = "Official Email", value = profile.official_email.ifBlank { user.email })
                 Divider(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-                ProfileRow(label = "Emergency Contact", value = "")
+                ProfileRow(label = "Emergency Contact", value = profile.current_address)
                 Divider(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-                ProfileRow(label = "Permanent Address", value = "")
+                ProfileRow(label = "Permanent Address", value = profile.permanent_address)
             }
 
             // PROFESSIONAL DETAILS CARD
             ProfileSectionCard(title = "Professional Placement", icon = Icons.Default.Work) {
-                ProfileRow(label = "Date of Joining (DOJ)", value = "")
+                ProfileRow(label = "Date of Joining (DOJ)", value = editDoj)
                 Divider(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
                 ProfileRow(label = "Firm Chambers Placement", value = "Bhopal Branch, Zone-I")
                 Divider(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
@@ -7764,6 +7800,62 @@ fun BirthdayCelebrationsSection(viewModel: OnSiteViewModel) {
     }
 }
 
+fun calculateLeaveDays(startDate: String, endDate: String): Long {
+    return try {
+        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+        val start = sdf.parse(startDate) ?: return 0
+        val end = sdf.parse(endDate) ?: return 0
+        (((end.time - start.time) / (1000L * 60L * 60L * 24L)) + 1L).coerceAtLeast(0L)
+    } catch (e: Exception) {
+        0L
+    }
+}
+
+@Composable
+fun AppliedLeaveTableHeader() {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f), RoundedCornerShape(6.dp))
+            .padding(horizontal = 8.dp, vertical = 10.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Text("Start", modifier = Modifier.weight(0.9f), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+        Text("End", modifier = Modifier.weight(0.9f), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+        Text("Days", modifier = Modifier.weight(0.55f), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+        Text("Reason", modifier = Modifier.weight(1.35f), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+        Text("Status", modifier = Modifier.weight(0.9f), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+    }
+}
+
+@Composable
+fun AppliedLeaveTableRow(req: LeaveRequest) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(6.dp))
+            .padding(horizontal = 8.dp, vertical = 10.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(req.start_date, modifier = Modifier.weight(0.9f), style = MaterialTheme.typography.bodySmall)
+        Text(req.end_date, modifier = Modifier.weight(0.9f), style = MaterialTheme.typography.bodySmall)
+        Text(calculateLeaveDays(req.start_date, req.end_date).toString(), modifier = Modifier.weight(0.55f), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+        Text(req.reason, modifier = Modifier.weight(1.35f), style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        Text(
+            req.status,
+            modifier = Modifier.weight(0.9f),
+            style = MaterialTheme.typography.bodySmall,
+            fontWeight = FontWeight.Bold,
+            color = when (req.status) {
+                "Accepted" -> Color(0xFF2E7D32)
+                "Rejected" -> Color(0xFFC62828)
+                else -> Color(0xFFE65100)
+            }
+        )
+    }
+}
+
 @Composable
 fun LeaveRequestEmployeeScreen(viewModel: OnSiteViewModel, user: Employee) {
     val employees by viewModel.employees.collectAsStateWithLifecycle()
@@ -7772,7 +7864,7 @@ fun LeaveRequestEmployeeScreen(viewModel: OnSiteViewModel, user: Employee) {
     val myLeaveRequests = allLeaveRequests.filter { it.user_uuid == user.uuid }
     val cas = employees.filter { it.role == "Manager" }
 
-    var selectedSection by remember { mutableStateOf(0) } // 0 = Apply, 1 = Previous Leaves
+    var selectedSection by remember { mutableStateOf(0) } // 0 = Apply, 1 = Applied Leaves
 
     var reason by remember { mutableStateOf("") }
     var startDate by remember { mutableStateOf("") }
@@ -7798,7 +7890,7 @@ fun LeaveRequestEmployeeScreen(viewModel: OnSiteViewModel, user: Employee) {
                 .padding(4.dp),
             horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            listOf("Apply for Leave", "Previous Leaves (${myLeaveRequests.size})").forEachIndexed { index, title ->
+            listOf("Apply for Leave", "Applied Leaves (${myLeaveRequests.size})").forEachIndexed { index, title ->
                 Box(
                     modifier = Modifier
                         .weight(1f)
@@ -7965,6 +8057,8 @@ fun LeaveRequestEmployeeScreen(viewModel: OnSiteViewModel, user: Employee) {
                             onClick = {
                                 if (reason.isBlank() || startDate.isBlank() || endDate.isBlank()) {
                                     errorMessage = "Please enter the start date, end date, and reason for leave."
+                                } else if (endDate <= startDate) {
+                                    errorMessage = "End date must be greater than start date."
                                 } else if (!applyToAll && selectedCaIds.isEmpty()) {
                                     errorMessage = "Please select at least one CA or choose All CAs."
                                 } else {
@@ -7983,11 +8077,11 @@ fun LeaveRequestEmployeeScreen(viewModel: OnSiteViewModel, user: Employee) {
                                     selectedCaIds = emptySet()
                                     applyToAll = true
                                     errorMessage = ""
-                                    selectedSection = 1 // Go to previous leave history
+                                    selectedSection = 1 // Go to applied leave history
                                     android.widget.Toast.makeText(context, "Leave Application Submitted successfully!", android.widget.Toast.LENGTH_LONG).show()
                                 }
                             },
-                            enabled = reason.isNotBlank() && startDate.isNotBlank() && endDate.isNotBlank(),
+                            enabled = reason.isNotBlank() && startDate.isNotBlank() && endDate.isNotBlank() && endDate > startDate,
                             modifier = Modifier.fillMaxWidth().testTag("submit_leave_button")
                         ) {
                             Icon(Icons.Default.Send, contentDescription = null)
@@ -7998,7 +8092,7 @@ fun LeaveRequestEmployeeScreen(viewModel: OnSiteViewModel, user: Employee) {
                 }
             }
         } else {
-            // Previous Leaves History
+            // Applied Leaves History
             if (myLeaveRequests.isEmpty()) {
                 Box(
                     modifier = Modifier
@@ -8014,7 +8108,7 @@ fun LeaveRequestEmployeeScreen(viewModel: OnSiteViewModel, user: Employee) {
                             modifier = Modifier.size(64.dp)
                         )
                         Text(
-                            text = "No previous leave applications found.",
+                            text = "No applied leave applications found.",
                             style = MaterialTheme.typography.bodyLarge,
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                         )
@@ -8023,123 +8117,15 @@ fun LeaveRequestEmployeeScreen(viewModel: OnSiteViewModel, user: Employee) {
             } else {
                 LazyColumn(
                     modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
+                    item { AppliedLeaveTableHeader() }
                     items(myLeaveRequests) { req ->
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
-                        ) {
-                            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Column {
-                                        Text(
-                                            text = "${req.start_date} to ${req.end_date}",
-                                            style = MaterialTheme.typography.titleMedium,
-                                            fontWeight = FontWeight.Bold,
-                                            color = MaterialTheme.colorScheme.primary
-                                        )
-                                        Text(
-                                            text = "Addressed To: ${req}",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-
-                                    Surface(
-                                        color = when (req.status) {
-                                            "Accepted" -> Color(0xFFE8F5E9)
-                                            "Rejected" -> Color(0xFFFFEBEE)
-                                            else -> Color(0xFFFFF3E0)
-                                        },
-                                        shape = RoundedCornerShape(6.dp)
-                                    ) {
-                                        Text(
-                                            text = req.status.uppercase(),
-                                            color = when (req.status) {
-                                                "Accepted" -> Color(0xFF2E7D32)
-                                                "Rejected" -> Color(0xFFC62828)
-                                                else -> Color(0xFFE65100)
-                                            },
-                                            fontWeight = FontWeight.Bold,
-                                            style = MaterialTheme.typography.labelSmall,
-                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                        )
-                                    }
-                                }
-
-                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-
-                                Text(
-                                    text = "Reason: ${req.reason}",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-
-                                if (req.status != "Pending") {
-                                    Card(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        colors = CardDefaults.cardColors(
-                                            containerColor = if (req.status == "Accepted") Color(0xFFF1F8E9) else Color(0xFFFFEBEE).copy(alpha = 0.5f)
-                                        ),
-                                        border = BorderStroke(
-                                            1.dp,
-                                            if (req.status == "Accepted") Color(0xFFDCEDC8) else Color(0xFFFFCDD2)
-                                        )
-                                    ) {
-                                        Column(modifier = Modifier.padding(10.dp)) {
-                                            Text(
-                                                text = "${req.status} by: ${req.manager_uuid}",
-                                                style = MaterialTheme.typography.labelSmall,
-                                                fontWeight = FontWeight.Bold,
-                                                color = if (req.status == "Accepted") Color(0xFF33691E) else Color(0xFFB71C1C)
-                                            )
-                                            if (req.comment.isNotEmpty()) {
-                                                Spacer(modifier = Modifier.height(2.dp))
-                                                Text(
-                                                    text = "CA Remark: \"${req.comment}\"",
-                                                    style = MaterialTheme.typography.bodySmall,
-                                                    fontStyle = FontStyle.Italic,
-                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
+                        AppliedLeaveTableRow(req)
                     }
                 }
             }
         }
-    }
-
-    if (showCalendarForField != null) {
-        val fieldName = showCalendarForField!!
-        val currentVal = when (fieldName) {
-            "startDate" -> startDate
-            "endDate" -> endDate
-            else -> ""
-        }
-        CalendarDialog(
-            initialDate = if (currentVal.isBlank()) "2026-07-04" else currentVal,
-            format = "yyyy-MM-dd",
-            onDismissRequest = { showCalendarForField = null },
-            onDateSelected = { selectedDate ->
-                if (fieldName == "startDate") {
-                    startDate = selectedDate
-                } else if (fieldName == "endDate") {
-                    endDate = selectedDate
-                }
-                errorMessage = ""
-                showCalendarForField = null
-            }
-        )
     }
 }
 
@@ -8155,7 +8141,7 @@ fun LeaveRequestsManagerScreen(viewModel: OnSiteViewModel, user: Employee) {
     
     val processedRequests = allLeaveRequests.filter { it.status != "Pending" }
 
-    var selectedSection by remember { mutableStateOf(0) } // 0 = Pending, 1 = Previous Leaves, 2 = Individual Leaves
+    var selectedSection by remember { mutableStateOf(0) } // 0 = Pending, 1 = Applied Leaves, 2 = Individual Leaves
     var selectedEmployeeId by remember { mutableStateOf("") }
     var showEmpDropdown by remember { mutableStateOf(false) }
 
@@ -8175,7 +8161,7 @@ fun LeaveRequestsManagerScreen(viewModel: OnSiteViewModel, user: Employee) {
         ) {
             listOf(
                 "Pending (${pendingRequests.size})",
-                "Previous (${processedRequests.size})",
+                "Applied (${processedRequests.size})",
                 "Individual"
             ).forEachIndexed { index, title ->
                 Box(
@@ -8342,7 +8328,7 @@ fun LeaveRequestsManagerScreen(viewModel: OnSiteViewModel, user: Employee) {
                 }
             }
         } else if (selectedSection == 1) {
-            // Previous Leaves History for CA
+            // Applied Leaves History for CA
             if (processedRequests.isEmpty()) {
                 Box(
                     modifier = Modifier
@@ -8358,7 +8344,7 @@ fun LeaveRequestsManagerScreen(viewModel: OnSiteViewModel, user: Employee) {
                             modifier = Modifier.size(64.dp)
                         )
                         Text(
-                            text = "No previous leaves history found.",
+                            text = "No applied leaves history found.",
                             style = MaterialTheme.typography.bodyLarge,
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                         )

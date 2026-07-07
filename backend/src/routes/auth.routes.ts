@@ -12,6 +12,8 @@ router.post('/register', [
   body('otp').notEmpty().withMessage('OTP is required')
 ], authController.register);
 
+router.put('/profile/:userUuid', authController.updateProfile);
+
 router.post('/login', [
   body('email').isEmail().withMessage('Valid email is required'),
   body('password').notEmpty().withMessage('Password is required')

@@ -19,6 +19,16 @@ class AuthController {
             res.status(400).json({ error: error.message });
         }
     };
+    updateProfile = async (req, res) => {
+        try {
+            const userUuid = String(req.params.userUuid);
+            const data = await this.authService.updateProfile(userUuid, req.body);
+            res.status(200).json({ message: 'Profile updated successfully', profile: data });
+        }
+        catch (error) {
+            res.status(400).json({ error: error.message });
+        }
+    };
     login = async (req, res) => {
         try {
             const errors = (0, express_validator_1.validationResult)(req);

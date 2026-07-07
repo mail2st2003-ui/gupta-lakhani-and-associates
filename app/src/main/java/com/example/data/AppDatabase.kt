@@ -142,7 +142,7 @@ interface AppDao {
 
 @Database(
     entities = [Employee::class, UserDetails::class, AttendanceLog::class, TodoItem::class, Message::class, SummonAlert::class, SystemAlert::class, LeaveRequest::class, Task::class, TaskDetails::class],
-    version = 11,
+    version = 12,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {

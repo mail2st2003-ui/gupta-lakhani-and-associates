@@ -8,6 +8,8 @@ import retrofit2.converter.moshi.MoshiConverterFactory
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import retrofit2.http.Body
+import retrofit2.http.PUT
+import retrofit2.http.Path
 import retrofit2.http.POST
 import java.util.concurrent.TimeUnit
 
@@ -40,16 +42,20 @@ data class RegisterRequest(
     val email: String,
     val password: String,
     val full_name: String,
+    val first_name: String,
+    val middle_name: String?,
+    val last_name: String,
     val role: String,
-    val department: String,
+    val designation: String,
     val custom_id: String?,
     val otp: String,
     val age: Int?,
     val dob: String?,
-    val fathers_name: String?,
-    val mothers_name: String?,
-    val address: String?,
-    val phone: String?,
+    val father_name: String?,
+    val mother_name: String?,
+    val permanent_address: String?,
+    val current_address: String?,
+    val contact: String?,
     val emergency_contact: String?,
     val doj: String?,
     val blood_group: String?
@@ -67,6 +73,9 @@ interface AuthApiService {
 
     @POST("api/auth/register")
     suspend fun register(@Body request: RegisterRequest): RegisterResponse
+
+    @PUT("api/auth/profile/{userUuid}")
+    suspend fun updateProfile(@Path("userUuid") userUuid: String, @Body profile: com.example.data.UserDetails): Any
 
     @POST("api/auth/send-otp")
     suspend fun sendOtp(@Body request: SendOtpRequest): SendOtpResponse
