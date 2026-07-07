@@ -15,7 +15,20 @@ router.post('/login', [
     (0, express_validator_1.body)('email').isEmail().withMessage('Valid email is required'),
     (0, express_validator_1.body)('password').notEmpty().withMessage('Password is required')
 ], authController.login);
+router.post('/2fa/setup', authController.setup2FA);
+router.post('/2fa/verify-setup', authController.verify2FASetup);
+router.post('/2fa/login', authController.verify2FALogin);
 router.post('/send-otp', [
     (0, express_validator_1.body)('email').isEmail().withMessage('Valid email is required')
 ], authController.sendOtp);
+router.post('/change-password', [
+    (0, express_validator_1.body)('email').isEmail().withMessage('Valid email is required'),
+    (0, express_validator_1.body)('currentPassword').notEmpty().withMessage('Current password is required'),
+    (0, express_validator_1.body)('newPassword').isLength({ min: 4 }).withMessage('New password must be at least 4 characters')
+], authController.changePassword);
+router.post('/reset-password', [
+    (0, express_validator_1.body)('email').isEmail().withMessage('Valid email is required'),
+    (0, express_validator_1.body)('otp').notEmpty().withMessage('OTP is required'),
+    (0, express_validator_1.body)('newPassword').isLength({ min: 4 }).withMessage('New password must be at least 4 characters')
+], authController.resetPassword);
 exports.default = router;

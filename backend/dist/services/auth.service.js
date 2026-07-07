@@ -32,10 +32,16 @@ var __importStar = (this && this.__importStar) || (function () {
         return result;
     };
 })();
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.AuthService = void 0;
 const supabase_1 = require("../config/supabase");
 const user_repository_1 = require("../repositories/user.repository");
+const otplib = __importStar(require("otplib"));
+const authenticator = otplib.authenticator;
+const qrcode_1 = __importDefault(require("qrcode"));
 // @ts-ignore
 const SibApiV3Sdk = __importStar(require("sib-api-v3-sdk"));
 const defaultClient = SibApiV3Sdk.ApiClient.instance;
@@ -46,7 +52,7 @@ const otpStore = new Map();
 class AuthService {
     userRepository = new user_repository_1.UserRepository();
     async registerUser(data) {
-        const { email, password, full_name, role, department, custom_id, otp } = data;
+        const { email, password, full_name, role, department, custom_id, otp, age, dob, fathers_name, mothers_name, address, phone, emergency_contact, doj, blood_group } = data;
         const normalizedEmail = email.trim().toLowerCase();
         // Validate OTP
         const stored = otpStore.get(normalizedEmail);
@@ -68,25 +74,62 @@ class AuthService {
             throw new Error('Email already registered');
         }
         // 1. Create user in Supabase Auth
+        let authUserId;
         const { data: authData, error: authError } = await supabase_1.supabase.auth.admin.createUser({
             email,
             password,
             email_confirm: true, // Auto confirm for now
             user_metadata: { full_name, role }
         });
-        if (authError)
-            throw new Error(authError.message);
-        if (!authData.user)
-            throw new Error('User creation failed');
+        if (authError) {
+            if (authError.message.includes('already registered') || authError.message.includes('already exists')) {
+                const { data: listData } = await supabase_1.supabase.auth.admin.listUsers({ page: 1, perPage: 10000 });
+                const existingAuth = listData?.users.find(u => u.email?.toLowerCase() === normalizedEmail);
+                if (existingAuth) {
+                    authUserId = existingAuth.id;
+                    await supabase_1.supabase.auth.admin.updateUserById(authUserId, { password, user_metadata: { full_name, role } });
+                }
+                else {
+                    throw new Error(authError.message);
+                }
+            }
+            else {
+                throw new Error(authError.message);
+            }
+        }
+        else {
+            if (!authData.user)
+                throw new Error('User creation failed');
+            authUserId = authData.user.id;
+        }
         // 2. Create user record in our users table
         const newUser = await this.userRepository.createUser({
-            auth_id: authData.user.id,
+            auth_id: authUserId,
             email,
             full_name,
             role: role || 'Staff',
             department,
-            custom_id
+            custom_id,
+            phone
         });
+        // 3. Create detailed profile
+        try {
+            await this.userRepository.createDetailedProfile({
+                id: newUser.id,
+                age,
+                dob,
+                fathers_name,
+                mothers_name,
+                address,
+                emergency_contact,
+                doj,
+                blood_group
+            });
+        }
+        catch (profileError) {
+            console.error('Failed to create detailed profile:', profileError);
+            // We don't fail the registration if this optional step errors out, but it's logged
+        }
         return newUser;
     }
     async loginUser(data) {
@@ -107,6 +150,53 @@ class AuthService {
             throw new Error('Login failed');
         // Fetch our user record
         const userProfile = await this.userRepository.getUserByAuthId(authData.user.id);
+        if (userProfile.is_2fa_enabled) {
+            return {
+                requires2FA: true,
+                authId: userProfile.auth_id
+            };
+        }
+        return {
+            user: userProfile,
+            session: authData.session
+        };
+    }
+    async setup2FA(email) {
+        const userProfile = await this.userRepository.getUserByEmail(email);
+        if (!userProfile)
+            throw new Error('User not found');
+        const secret = authenticator.generateSecret();
+        await this.userRepository.update2FA(userProfile.auth_id, secret, false);
+        const otpauth = authenticator.keyuri(email, 'FirmSync', secret);
+        const qrCodeDataUrl = await qrcode_1.default.toDataURL(otpauth);
+        return {
+            secret,
+            qrCode: qrCodeDataUrl
+        };
+    }
+    async verify2FASetup(email, token) {
+        const userProfile = await this.userRepository.getUserByEmail(email);
+        if (!userProfile)
+            throw new Error('User not found');
+        if (!userProfile.totp_secret)
+            throw new Error('2FA not setup');
+        const isValid = authenticator.verify({ token, secret: userProfile.totp_secret });
+        if (!isValid)
+            throw new Error('Invalid 2FA code');
+        await this.userRepository.update2FA(userProfile.auth_id, userProfile.totp_secret, true);
+        return { success: true };
+    }
+    async verify2FALogin(email, password, token) {
+        const userProfile = await this.userRepository.getUserByEmail(email);
+        if (!userProfile || !userProfile.totp_secret)
+            throw new Error('User or 2FA not configured');
+        const isValid = authenticator.verify({ token, secret: userProfile.totp_secret });
+        if (!isValid)
+            throw new Error('Invalid 2FA code');
+        // Re-authenticate with Supabase to get the session securely
+        const { data: authData, error: authError } = await supabase_1.supabase.auth.signInWithPassword({ email, password });
+        if (authError || !authData.session)
+            throw new Error('Login failed');
         return {
             user: userProfile,
             session: authData.session
@@ -137,6 +227,63 @@ class AuthService {
             console.error('Brevo API Error:', error);
             throw new Error('Failed to send OTP email');
         }
+    }
+    async changePassword(data) {
+        const { email, currentPassword, newPassword } = data;
+        // Verify current password
+        const { data: authData, error: authError } = await supabase_1.supabase.auth.signInWithPassword({
+            email,
+            password: currentPassword
+        });
+        if (authError || !authData.user) {
+            throw new Error('Invalid current password');
+        }
+        // Update password using Admin API
+        const { error: updateError } = await supabase_1.supabase.auth.admin.updateUserById(authData.user.id, {
+            password: newPassword
+        });
+        if (updateError) {
+            throw new Error('Failed to update password');
+        }
+        return { message: 'Password updated successfully' };
+    }
+    async resetPassword(data) {
+        const { email, otp, newPassword } = data;
+        const normalizedEmail = email.trim().toLowerCase();
+        // Verify OTP
+        const storedOtpData = otpStore.get(normalizedEmail);
+        if (!storedOtpData) {
+            throw new Error('Invalid or expired OTP');
+        }
+        if (Date.now() > storedOtpData.expiresAt) {
+            otpStore.delete(normalizedEmail);
+            throw new Error('OTP has expired');
+        }
+        if (storedOtpData.otp !== otp) {
+            throw new Error('Invalid OTP');
+        }
+        // Get user by email to get Auth ID
+        const { data: users, error: userError } = await supabase_1.supabase.auth.admin.listUsers({
+            page: 1,
+            perPage: 10000
+        });
+        if (userError) {
+            throw new Error('Failed to retrieve user data');
+        }
+        const authUser = users.users.find(u => u.email?.toLowerCase() === normalizedEmail);
+        if (!authUser) {
+            throw new Error('User not found');
+        }
+        // Update password using Admin API
+        const { error: updateError } = await supabase_1.supabase.auth.admin.updateUserById(authUser.id, {
+            password: newPassword
+        });
+        if (updateError) {
+            throw new Error('Failed to reset password');
+        }
+        // Clear OTP after successful use
+        otpStore.delete(normalizedEmail);
+        return { message: 'Password reset successfully' };
     }
 }
 exports.AuthService = AuthService;

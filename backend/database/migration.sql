@@ -96,7 +96,8 @@ CREATE TABLE public.summons (
 
 -- Detailed Profiles Table
 CREATE TABLE public.detailed_profiles (
-    id UUID PRIMARY KEY REFERENCES public.users(id) ON DELETE CASCADE,
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID REFERENCES public.users(id) ON DELETE CASCADE UNIQUE,
     age INTEGER,
     dob TEXT,
     fathers_name TEXT,

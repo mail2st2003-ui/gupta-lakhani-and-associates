@@ -1041,10 +1041,14 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
                 status = "Incomplete",
                 isPersonal = false
             )
-            repository.insertTodoItem(task)
-
-            if (_isOfflineMode.value) {
-                _syncStatus.value = "Pending Sync (Offline Mode)"
+            try {
+                if (!_isOfflineMode.value) {
+                    com.example.api.ApiClient.tasksService.createTask(task)
+                }
+                repository.insertTodoItem(task)
+            } catch (e: Exception) {
+                repository.insertTodoItem(task.copy(isSynced = false))
+                _syncStatus.value = "Failed to sync task. Saved offline."
             }
         }
     }
@@ -1063,10 +1067,14 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
                 isPersonal = false,
                 assignedBy = assignedBy
             )
-            repository.insertTodoItem(task)
-
-            if (_isOfflineMode.value) {
-                _syncStatus.value = "Pending Sync (Offline Mode)"
+            try {
+                if (!_isOfflineMode.value) {
+                    com.example.api.ApiClient.tasksService.createTask(task)
+                }
+                repository.insertTodoItem(task)
+            } catch (e: Exception) {
+                repository.insertTodoItem(task.copy(isSynced = false))
+                _syncStatus.value = "Failed to sync task. Saved offline."
             }
         }
     }
@@ -1080,15 +1088,18 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
                 description = description,
                 priority = priority,
                 isCompleted = false,
-                isApproved = false,
                 isSynced = !_isOfflineMode.value,
                 status = "Incomplete",
                 isPersonal = true
             )
-            repository.insertTodoItem(task)
-
-            if (_isOfflineMode.value) {
-                _syncStatus.value = "Pending Sync (Offline Mode)"
+            try {
+                if (!_isOfflineMode.value) {
+                    com.example.api.ApiClient.tasksService.createTask(task)
+                }
+                repository.insertTodoItem(task)
+            } catch (e: Exception) {
+                repository.insertTodoItem(task.copy(isSynced = false))
+                _syncStatus.value = "Failed to sync task. Saved offline."
             }
         }
     }
@@ -1124,9 +1135,9 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    fun deleteTask(taskId: Int) {
+    fun deleteTask(id: String) {
         viewModelScope.launch {
-            repository.deleteTodoItemById(taskId)
+            repository.deleteTodoItemById(id)
         }
     }
 
@@ -1338,24 +1349,36 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    fun loginUser(email: String, password: String, onResult: (String?, Employee?) -> Unit) {
+    fun loginUser(email: String, password: String, onResult: (String?, Employee?, Boolean) -> Unit) {
         viewModelScope.launch {
             try {
                 val response = com.example.api.ApiClient.authService.login(
                     com.example.api.LoginRequest(email = email, password = password)
                 )
-                repository.insertEmployees(listOf(response.user))
-                selectUserSession(response.user)
-                onResult(null, response.user)
+                if (response.requires2FA == true) {
+                    onResult(null, null, true)
+                } else if (response.user != null) {
+                    completeLogin(response.user)
+                    onResult(null, response.user, false)
+                } else {
+                    onResult("Invalid response", null, false)
+                }
             } catch (e: retrofit2.HttpException) {
                 if (e.code() == 401) {
-                    onResult("Invalid credential", null)
+                    onResult("Invalid credential", null, false)
                 } else {
-                    onResult("Invalid credential", null)
+                    onResult("Invalid credential", null, false)
                 }
             } catch (e: Exception) {
-                onResult("Network error or server unavailable.", null)
+                onResult("Network error or server unavailable.", null, false)
             }
+        }
+    }
+
+    fun completeLogin(user: Employee) {
+        viewModelScope.launch {
+            repository.insertEmployees(listOf(user))
+            selectUserSession(user)
         }
     }
 
@@ -1386,14 +1409,20 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
                 reason = reason,
                 startDate = startDate,
                 endDate = endDate,
-                status = "Pending",
                 timestamp = System.currentTimeMillis()
             )
-            repository.insertLeaveRequest(request)
+            try {
+                if (!_isOfflineMode.value) {
+                    com.example.api.ApiClient.leavesService.createLeave(request)
+                }
+                repository.insertLeaveRequest(request)
+            } catch (e: Exception) {
+                repository.insertLeaveRequest(request)
+            }
         }
     }
 
-    fun approveLeaveRequest(requestId: Int, approverName: String, comment: String) {
+    fun approveLeaveRequest(requestId: String, approverName: String, comment: String) {
         viewModelScope.launch {
             val target = allLeaveRequests.value.find { it.id == requestId } ?: return@launch
             val updated = target.copy(
@@ -1405,7 +1434,7 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    fun rejectLeaveRequest(requestId: Int, approverName: String, comment: String) {
+    fun rejectLeaveRequest(requestId: String, approverName: String, comment: String) {
         viewModelScope.launch {
             val target = allLeaveRequests.value.find { it.id == requestId } ?: return@launch
             val updated = target.copy(

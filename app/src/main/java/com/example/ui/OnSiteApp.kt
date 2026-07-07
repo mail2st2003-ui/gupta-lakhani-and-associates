@@ -339,13 +339,17 @@ fun OnSiteApp(viewModel: OnSiteViewModel = viewModel()) {
                             Column {
                                 Text(
                                     text = "Gupta Lakhani & Associates",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                                 )
                                 Text(
                                     text = if (isOfflineMode) "Offline Mode Enabled" else "M.P. Nagar Chambers • Bhopal",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = if (isOfflineMode) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.secondary
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = if (isOfflineMode) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.secondary,
+                                    maxLines = 1,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                                 )
                             }
                         }
@@ -369,18 +373,6 @@ fun OnSiteApp(viewModel: OnSiteViewModel = viewModel()) {
                                 onCheckedChange = { viewModel.setOfflineMode(it) },
                                 modifier = Modifier.testTag("offline_toggle")
                             )
-                        }
-
-                        if (currentUser != null) {
-                            IconButton(
-                                onClick = { viewModel.logoutSession() },
-                                modifier = Modifier.testTag("logout_button")
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.ExitToApp,
-                                    contentDescription = "Logout Current Session"
-                                )
-                            }
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(
@@ -556,6 +548,7 @@ fun LoginSelectionScreen(
 ) {
     val employees by viewModel.employees.collectAsStateWithLifecycle()
     var isRegisterMode by remember { mutableStateOf(initialShowRegister) }
+    val scope = rememberCoroutineScope()
 
     // Login Form State
     var loginUserId by remember { mutableStateOf("") }
@@ -563,6 +556,18 @@ fun LoginSelectionScreen(
     var loginError by remember { mutableStateOf("") }
     var isPasswordVisible by remember { mutableStateOf(false) }
     var isLoggingIn by remember { mutableStateOf(false) }
+
+    // Forgot Password State
+    var showForgotPasswordDialog by remember { mutableStateOf(false) }
+    var isForgotRequestingOtp by remember { mutableStateOf(false) }
+    var isForgotVerifyingOtp by remember { mutableStateOf(false) }
+    var forgotEmail by remember { mutableStateOf("") }
+    var forgotOtp by remember { mutableStateOf("") }
+    var forgotNewPassword by remember { mutableStateOf("") }
+    var isForgotNewPasswordVisible by remember { mutableStateOf(false) }
+    var forgotStep by remember { mutableStateOf(1) } // 1: Email, 2: OTP & New Password
+    var forgotError by remember { mutableStateOf("") }
+    var forgotSuccess by remember { mutableStateOf("") }
 
     // Signup Form State
     var regName by remember { mutableStateOf("") }
@@ -575,6 +580,12 @@ fun LoginSelectionScreen(
     var regError by remember { mutableStateOf("") }
     var isRegPasswordVisible by remember { mutableStateOf(false) }
     var isRegistering by remember { mutableStateOf(false) }
+
+    // 2FA Login State
+    var show2FADialog by remember { mutableStateOf(false) }
+    var login2FACode by remember { mutableStateOf("") }
+    var login2FAError by remember { mutableStateOf("") }
+    var isVerifying2FA by remember { mutableStateOf(false) }
 
     // Personal Details States
     var regDob by remember { mutableStateOf("") }
@@ -606,14 +617,17 @@ fun LoginSelectionScreen(
         modifier = Modifier.fillMaxSize(),
         maxWidth = 520.dp
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+        Box(
+            modifier = Modifier.fillMaxSize().padding(24.dp),
+            contentAlignment = Alignment.Center
         ) {
-            // Back Button & Header Row
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                // Back Button & Header Row
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
@@ -754,6 +768,7 @@ fun LoginSelectionScreen(
                             isRegistering = false
                             val newProfile = DetailedProfile(
                                 id = registeredEmp.id,
+                                userId = registeredEmp.id,
                                 age = regAge.toIntOrNull() ?: calculateAge(regDob),
                                 dob = regDob,
                                 fathersName = regFathersName,
@@ -864,15 +879,30 @@ fun LoginSelectionScreen(
                 )
             }
 
-            Spacer(modifier = Modifier.height(24.dp))
+            TextButton(
+                onClick = {
+                    forgotEmail = loginUserId
+                    forgotStep = 1
+                    forgotError = ""
+                    forgotSuccess = ""
+                    showForgotPasswordDialog = true
+                },
+                modifier = Modifier.align(Alignment.End)
+            ) {
+                Text("Forgot Password?", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
 
             Button(
                 onClick = {
                     loginError = ""
                     isLoggingIn = true
-                    viewModel.loginUser(loginUserId.trim(), loginPassword) { error, user ->
+                    viewModel.loginUser(loginUserId.trim(), loginPassword) { error, user, requires2FA ->
                         isLoggingIn = false
-                        if (error != null) {
+                        if (requires2FA) {
+                            show2FADialog = true
+                        } else if (error != null) {
                             loginError = error
                         } else if (user != null) {
                             loginError = ""
@@ -1303,9 +1333,240 @@ fun LoginSelectionScreen(
             }
         )
     }
-}
-}
+    if (showForgotPasswordDialog) {
+        androidx.compose.ui.window.Dialog(onDismissRequest = { showForgotPasswordDialog = false }) {
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = "Reset Password",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
 
+                    if (forgotStep == 1) {
+                        Text("Enter your registered email to receive an OTP.")
+                        Spacer(modifier = Modifier.height(16.dp))
+                        OutlinedTextField(
+                            value = forgotEmail,
+                            onValueChange = { forgotEmail = it },
+                            label = { Text("Email") },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true
+                        )
+                    } else if (forgotStep == 2) {
+                        Text("Enter the OTP sent to your email and your new password.")
+                        Spacer(modifier = Modifier.height(16.dp))
+                        OutlinedTextField(
+                            value = forgotOtp,
+                            onValueChange = { forgotOtp = it },
+                            label = { Text("OTP (6 digits)") },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        OutlinedTextField(
+                            value = forgotNewPassword,
+                            onValueChange = { forgotNewPassword = it },
+                            label = { Text("New Password") },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            visualTransformation = if (isForgotNewPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                            trailingIcon = {
+                                IconButton(onClick = { isForgotNewPasswordVisible = !isForgotNewPasswordVisible }) {
+                                    Icon(
+                                        imageVector = if (isForgotNewPasswordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                                        contentDescription = "Toggle Visibility"
+                                    )
+                                }
+                            }
+                        )
+                    }
+
+                    if (forgotError.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(forgotError, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                    }
+                    if (forgotSuccess.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(forgotSuccess, color = Color(0xFF388E3C), style = MaterialTheme.typography.bodySmall)
+                    }
+
+                    Spacer(modifier = Modifier.height(24.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End
+                    ) {
+                        TextButton(onClick = { showForgotPasswordDialog = false }, enabled = !isForgotRequestingOtp && !isForgotVerifyingOtp) {
+                            Text("Cancel")
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Button(
+                            onClick = {
+                                forgotError = ""
+                                forgotSuccess = ""
+                                if (forgotStep == 1) {
+                                    if (forgotEmail.isBlank()) {
+                                        forgotError = "Email is required."
+                                        return@Button
+                                    }
+                                    isForgotRequestingOtp = true
+                                    scope.launch {
+                                        try {
+                                            com.example.api.ApiClient.authService.sendOtp(
+                                                com.example.api.SendOtpRequest(email = forgotEmail.trim())
+                                            )
+                                            forgotSuccess = "OTP sent successfully!"
+                                            forgotStep = 2
+                                        } catch (e: Exception) {
+                                            forgotError = "Failed to send OTP. Please check email."
+                                        } finally {
+                                            isForgotRequestingOtp = false
+                                        }
+                                    }
+                                } else {
+                                    if (forgotOtp.isBlank() || forgotNewPassword.isBlank()) {
+                                        forgotError = "OTP and New Password are required."
+                                        return@Button
+                                    }
+                                    isForgotVerifyingOtp = true
+                                    scope.launch {
+                                        try {
+                                            val response = com.example.api.ApiClient.authService.resetPassword(
+                                                com.example.api.ResetPasswordRequest(
+                                                    email = forgotEmail.trim(),
+                                                    otp = forgotOtp.trim(),
+                                                    newPassword = forgotNewPassword
+                                                )
+                                            )
+                                            forgotSuccess = response.message
+                                            kotlinx.coroutines.delay(1500)
+                                            showForgotPasswordDialog = false
+                                            forgotStep = 1
+                                            forgotOtp = ""
+                                            forgotNewPassword = ""
+                                        } catch (e: Exception) {
+                                            forgotError = "Failed to reset password: ${e.message}"
+                                        } finally {
+                                            isForgotVerifyingOtp = false
+                                        }
+                                    }
+                                }
+                            },
+                            enabled = !isForgotRequestingOtp && !isForgotVerifyingOtp
+                        ) {
+                            if (isForgotRequestingOtp || isForgotVerifyingOtp) {
+                                androidx.compose.material3.CircularProgressIndicator(
+                                    modifier = Modifier.size(16.dp),
+                                    color = MaterialTheme.colorScheme.onPrimary,
+                                    strokeWidth = 2.dp
+                                )
+                            } else {
+                                Text(if (forgotStep == 1) "Send OTP" else "Reset Password")
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+    }
+    
+    // 2FA Verification Dialog
+    if (show2FADialog) {
+        AlertDialog(
+            onDismissRequest = {
+                show2FADialog = false
+                login2FACode = ""
+                login2FAError = ""
+            },
+            title = { Text("Two-Factor Authentication", fontWeight = FontWeight.Bold) },
+            text = {
+                Column {
+                    Text("Enter the 6-digit code from your authenticator app.")
+                    Spacer(modifier = Modifier.height(16.dp))
+                    OutlinedTextField(
+                        value = login2FACode,
+                        onValueChange = { login2FACode = it },
+                        label = { Text("Authentication Code") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    if (login2FAError.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(login2FAError, color = MaterialTheme.colorScheme.error, fontSize = 14.sp)
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (login2FACode.isBlank()) {
+                            login2FAError = "Code is required"
+                            return@Button
+                        }
+                        isVerifying2FA = true
+                        login2FAError = ""
+                        scope.launch {
+                            try {
+                                val response = com.example.api.ApiClient.authService.verify2FALogin(
+                                    com.example.api.Verify2FALoginRequest(
+                                        email = loginUserId.trim(),
+                                        password = loginPassword,
+                                        token = login2FACode.trim()
+                                    )
+                                )
+                                if (response.user != null) {
+                                    viewModel.completeLogin(response.user)
+                                    show2FADialog = false
+                                }
+                            } catch (e: retrofit2.HttpException) {
+                                if (e.code() == 401) {
+                                    login2FAError = "Invalid code. Please try again."
+                                } else {
+                                    login2FAError = "Failed to verify 2FA."
+                                }
+                            } catch (e: Exception) {
+                                login2FAError = "Network error."
+                            } finally {
+                                isVerifying2FA = false
+                            }
+                        }
+                    },
+                    enabled = !isVerifying2FA
+                ) {
+                    if (isVerifying2FA) {
+                        CircularProgressIndicator(modifier = Modifier.size(24.dp), color = MaterialTheme.colorScheme.onPrimary)
+                    } else {
+                        Text("Verify")
+                    }
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        show2FADialog = false
+                        login2FACode = ""
+                        login2FAError = ""
+                    }
+                ) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+}
 @Composable
 fun MainDashboardContainer(
     viewModel: OnSiteViewModel,
@@ -4810,7 +5071,7 @@ fun ManagerTasksDashboard(viewModel: OnSiteViewModel, currentUser: Employee) {
     val eligibleEmployees = employees.filter { it.role != "Manager" }
     
     var showAssignDialog by remember { mutableStateOf(false) }
-    val writtenClarifications = remember { mutableStateMapOf<Int, String>() }
+    val writtenClarifications = remember { mutableStateMapOf<String, String>() }
     
     val pendingApprovals = allTasks.filter { !it.isPersonal && it.status == "Complete" && !it.isApproved }
 
@@ -5772,6 +6033,7 @@ fun getDetailedProfile(empId: String): DetailedProfile {
     return when (empId) {
         "CA-GU-01" -> DetailedProfile(
             id = "CA-GU-01",
+            userId = "CA-GU-01",
             age = 45,
             dob = "15-Aug-1981",
             fathersName = "Late Sh. R. K. Gupta",
@@ -5785,6 +6047,7 @@ fun getDetailedProfile(empId: String): DetailedProfile {
         )
         "CA-LA-02" -> DetailedProfile(
             id = "CA-LA-02",
+            userId = "CA-LA-02",
             age = 42,
             dob = "22-Nov-1983",
             fathersName = "Sh. Suresh Lakhani",
@@ -5798,6 +6061,7 @@ fun getDetailedProfile(empId: String): DetailedProfile {
         )
         "EMP-RS-54" -> DetailedProfile(
             id = "EMP-RS-54",
+            userId = "EMP-RS-54",
             age = 22,
             dob = "12-Oct-2003",
             fathersName = "Mr. Ramesh Sharma",
@@ -5811,6 +6075,7 @@ fun getDetailedProfile(empId: String): DetailedProfile {
         )
         "EMP-PP-88" -> DetailedProfile(
             id = "EMP-PP-88",
+            userId = "EMP-PP-88",
             age = 24,
             dob = "05-May-2002",
             fathersName = "Mr. Kirit Patel",
@@ -5824,6 +6089,7 @@ fun getDetailedProfile(empId: String): DetailedProfile {
         )
         "EMP-VS-22" -> DetailedProfile(
             id = "EMP-VS-22",
+            userId = "EMP-VS-22",
             age = 26,
             dob = "18-Sep-2000",
             fathersName = "Mr. Mahendra Singh",
@@ -5837,6 +6103,7 @@ fun getDetailedProfile(empId: String): DetailedProfile {
         )
         "EMP-RM-19" -> DetailedProfile(
             id = "EMP-RM-19",
+            userId = "EMP-RM-19",
             age = 23,
             dob = "30-Jan-2003",
             fathersName = "Mr. Nitin Mehta",
@@ -5850,6 +6117,7 @@ fun getDetailedProfile(empId: String): DetailedProfile {
         )
         else -> DetailedProfile(
             id = empId,
+            userId = empId,
             age = 23,
             dob = "01-Jan-2003",
             fathersName = "Father Name",
@@ -6372,6 +6640,16 @@ fun MyProfileScreen(viewModel: OnSiteViewModel, user: Employee) {
     var showPhotoUpload by remember { mutableStateOf(false) }
     var showChangePasswordDialog by remember { mutableStateOf(false) }
 
+    // 2FA Setup States
+    var showSetup2FADialog by remember { mutableStateOf(false) }
+    var setup2FAQrCode by remember { mutableStateOf("") }
+    var setup2FASecret by remember { mutableStateOf("") }
+    var setup2FACode by remember { mutableStateOf("") }
+    var setup2FAError by remember { mutableStateOf("") }
+    var isSettingUp2FA by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+
     var isEditing by remember { mutableStateOf(false) }
 
     // Temporary form states
@@ -6534,6 +6812,7 @@ fun MyProfileScreen(viewModel: OnSiteViewModel, user: Employee) {
                         onClick = {
                             val updatedProfile = DetailedProfile(
                                 id = user.id,
+                                userId = user.id,
                                 age = editAge.toIntOrNull() ?: profile.age,
                                 dob = editDob,
                                 fathersName = editFathersName,
@@ -6794,11 +7073,38 @@ fun MyProfileScreen(viewModel: OnSiteViewModel, user: Employee) {
                             containerColor = MaterialTheme.colorScheme.primaryContainer,
                             contentColor = MaterialTheme.colorScheme.onPrimaryContainer
                         ),
-                        modifier = Modifier.testTag("change_password_option_btn").fillMaxWidth()
+                        modifier = Modifier.testTag("change_password_option_btn").weight(1f)
                     ) {
                         Icon(Icons.Default.VpnKey, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(6.dp))
                         Text("Change Password", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                    }
+
+                    Spacer(modifier = Modifier.width(8.dp))
+
+                    Button(
+                        onClick = {
+                            // Fetch QR code
+                            scope.launch {
+                                try {
+                                    val response = com.example.api.ApiClient.authService.setup2FA(com.example.api.Setup2FARequest(email = user.email))
+                                    setup2FAQrCode = response.qrCode
+                                    setup2FASecret = response.secret
+                                    showSetup2FADialog = true
+                                } catch (e: Exception) {
+                                    android.widget.Toast.makeText(context, "Error setting up 2FA: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
+                                }
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                            contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                        ),
+                        modifier = Modifier.testTag("setup_2fa_btn").weight(1f)
+                    ) {
+                        Icon(Icons.Default.Security, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Setup 2FA", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -6943,7 +7249,106 @@ fun MyProfileScreen(viewModel: OnSiteViewModel, user: Employee) {
             }
         )
     }
-}
+    }
+    
+    // 2FA Setup Dialog
+    if (showSetup2FADialog) {
+        AlertDialog(
+            onDismissRequest = {
+                showSetup2FADialog = false
+                setup2FAQrCode = ""
+                setup2FASecret = ""
+                setup2FACode = ""
+                setup2FAError = ""
+            },
+            title = { Text("Setup Two-Factor Authentication") },
+            text = {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("1. Scan the QR code with Google Authenticator.", fontSize = 14.sp)
+                    Spacer(modifier = Modifier.height(16.dp))
+                    if (setup2FAQrCode.isNotEmpty()) {
+                        val base64String = setup2FAQrCode.substringAfter("base64,")
+                        val bitmap = try {
+                            val imageBytes = android.util.Base64.decode(base64String, android.util.Base64.DEFAULT)
+                            android.graphics.BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size)
+                        } catch (e: Exception) {
+                            null
+                        }
+                        if (bitmap != null) {
+                            Image(
+                                bitmap = bitmap.asImageBitmap(),
+                                contentDescription = "2FA QR Code",
+                                modifier = Modifier.size(200.dp)
+                            )
+                        } else {
+                            Text("Failed to load QR Code.")
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text("2. Enter the 6-digit code to verify.", fontSize = 14.sp)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = setup2FACode,
+                        onValueChange = { setup2FACode = it },
+                        label = { Text("6-Digit Code") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    if (setup2FAError.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(setup2FAError, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (setup2FACode.isBlank()) {
+                            setup2FAError = "Code is required"
+                            return@Button
+                        }
+                        isSettingUp2FA = true
+                        setup2FAError = ""
+                        scope.launch {
+                            try {
+                                val response = com.example.api.ApiClient.authService.verify2FASetup(
+                                    com.example.api.Verify2FASetupRequest(email = user.email, token = setup2FACode.trim())
+                                )
+                                if (response.success) {
+                                    showSetup2FADialog = false
+                                }
+                            } catch (e: Exception) {
+                                setup2FAError = "Invalid code. Try again."
+                            } finally {
+                                isSettingUp2FA = false
+                            }
+                        }
+                    },
+                    enabled = !isSettingUp2FA
+                ) {
+                    if (isSettingUp2FA) {
+                        CircularProgressIndicator(modifier = Modifier.size(24.dp), color = MaterialTheme.colorScheme.onPrimary)
+                    } else {
+                        Text("Verify & Enable")
+                    }
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showSetup2FADialog = false
+                        setup2FAQrCode = ""
+                        setup2FASecret = ""
+                        setup2FACode = ""
+                        setup2FAError = ""
+                    }
+                ) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
 }
 
 @Composable

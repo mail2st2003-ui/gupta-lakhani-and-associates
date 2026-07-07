@@ -31,7 +31,7 @@ data class AttendanceLog(
 
 @Entity(tableName = "todo_items")
 data class TodoItem(
-    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    @PrimaryKey val id: String = java.util.UUID.randomUUID().toString(),
     val employeeId: String,
     val title: String,
     val description: String,
@@ -47,7 +47,7 @@ data class TodoItem(
 
 @Entity(tableName = "messages")
 data class Message(
-    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    @PrimaryKey val id: String = "",
     val senderId: String,
     val senderName: String,
     val senderRole: String,
@@ -89,7 +89,7 @@ data class SystemAlert(
 
 @Entity(tableName = "leave_requests")
 data class LeaveRequest(
-    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    @PrimaryKey val id: String = java.util.UUID.randomUUID().toString(),
     val employeeId: String,
     val employeeName: String,
     val employeeRole: String,
@@ -107,6 +107,7 @@ data class LeaveRequest(
 @Entity(tableName = "detailed_profiles")
 data class DetailedProfile(
     @PrimaryKey val id: String,
+    val userId: String,
     val age: Int,
     val dob: String,
     val fathersName: String,
