@@ -54,7 +54,7 @@ import com.example.data.Message
 import com.example.data.SystemAlert
 import com.example.data.TodoItem
 import com.example.data.LeaveRequest
-import com.example.data.DetailedProfile
+import com.example.data.UserDetails
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -94,7 +94,7 @@ fun OnSiteApp(viewModel: OnSiteViewModel = viewModel()) {
         listOf(Icons.Default.LocationOn, Icons.Default.Checklist, Icons.Default.Chat, Icons.Default.Forum, Icons.Default.EventNote, Icons.Default.Person)
     }
 
-    LaunchedEffect(currentUser?.id) {
+    LaunchedEffect(currentUser?.uuid) {
         if (currentUser != null) {
             selectedTab = 0
             landingMode = null
@@ -186,7 +186,7 @@ fun OnSiteApp(viewModel: OnSiteViewModel = viewModel()) {
                             ) {
                                 Box(contentAlignment = Alignment.Center) {
                                     Text(
-                                        text = currentUser!!.name.take(2).uppercase(),
+                                        text = currentUser!!.first_name?.take(2)?.uppercase() ?: "??",
                                         color = Color.White,
                                         fontWeight = FontWeight.Bold,
                                         fontSize = 12.sp
@@ -196,14 +196,14 @@ fun OnSiteApp(viewModel: OnSiteViewModel = viewModel()) {
                             Spacer(modifier = Modifier.width(10.dp))
                             Column {
                                 Text(
-                                    text = currentUser!!.name,
+                                    text = currentUser!!.first_name ?: "Unknown",
                                     style = MaterialTheme.typography.bodyMedium,
                                     fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.onSurface
                                 )
-                                DesignationBadge(empId = currentUser!!.id)
+                                DesignationBadge(empId = currentUser!!.uuid)
                                 Text(
-                                    text = "ID: ${currentUser!!.id}",
+                                    text = "ID: ${currentUser!!.uuid}",
                                     style = MaterialTheme.typography.labelSmall,
                                     fontFamily = FontFamily.Monospace,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -430,7 +430,7 @@ fun OnSiteApp(viewModel: OnSiteViewModel = viewModel()) {
                                     modifier = Modifier.padding(top = 4.dp)
                                 )
                                 Text(
-                                    text = "Broadcasted by ${alert.senderName} at ${formatTime(alert.timestamp)}",
+                                    text = "Broadcasted by ${alert.title} at ${formatTime(alert.timestamp)}",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.error.copy(alpha = 0.8f),
                                     modifier = Modifier.padding(top = 4.dp)
@@ -766,25 +766,30 @@ fun LoginSelectionScreen(
                         bloodGroup = regBloodGroup,
                         onSuccess = { registeredEmp ->
                             isRegistering = false
-                            val newProfile = DetailedProfile(
-                                id = registeredEmp.id,
-                                userId = registeredEmp.id,
-                                age = regAge.toIntOrNull() ?: calculateAge(regDob),
+                            val newProfile = UserDetails(
+                                uuid = registeredEmp.uuid,
+                                user_uuid = registeredEmp.uuid,
+                                first_name = regName,
+                                middle_name = null,
+                                last_name = "",
+                                father_name = regFathersName,
+                                mother_name = regMothersName,
                                 dob = regDob,
-                                fathersName = regFathersName,
-                                mothersName = regMothersName,
-                                address = regAddress,
-                                email = regEmail,
-                                phone = regMobile,
-                                emergencyContact = regEmergencyContact,
-                                doj = regDoj,
-                                bloodGroup = regBloodGroup
+                                gender = "",
+                                blood_group = regBloodGroup,
+                                contact = regMobile,
+                                official_email = regEmail,
+                                personal_email = "",
+                                permanent_address = regAddress,
+                                current_address = regEmergencyContact,
+                                profile_image = null,
+                                designation = ""
                             )
-                            viewModel.saveDetailedProfile(newProfile)
+                            viewModel.saveUserDetails(newProfile)
 
                             android.widget.Toast.makeText(
                                 context,
-                                "Sign up successful! Welcome, " + registeredEmp.name + ".",
+                                "Sign up successful! Welcome, " + (registeredEmp.first_name ?: registeredEmp.email) + ".",
                                 android.widget.Toast.LENGTH_LONG
                             ).show()
                         },
@@ -1265,7 +1270,7 @@ fun LoginSelectionScreen(
                         regError = "Emergency Contact Number must be exactly 10 digits."
                     } else {
                         val trimmedCustomId = regCustomId.trim()
-                        val alreadyExists = employees.any { it.id.equals(trimmedCustomId, ignoreCase = true) }
+                        val alreadyExists = employees.any { it.uuid.equals(trimmedCustomId, ignoreCase = true) }
                         if (alreadyExists) {
                             regError = "This Username/User ID is already taken. Please choose another one."
                             return@Button
@@ -1719,10 +1724,10 @@ fun EmployeeOnSiteScreen(
     val employeeTasks by viewModel.currentEmployeeTodoItems.collectAsStateWithLifecycle()
     val companyAlerts by viewModel.systemAlerts.collectAsStateWithLifecycle()
 
-    val pendingCaTasks = employeeTasks.filter { !it.isPersonal && it.status == "Incomplete" }
+    val pendingCaTasks = employeeTasks.filter { it.status == "Incomplete" }
     
     val context = LocalContext.current
-    val prefs = remember(employee.id) { context.getSharedPreferences("onsite_prefs", android.content.Context.MODE_PRIVATE) }
+    val prefs = remember(employee.uuid) { context.getSharedPreferences("onsite_prefs", android.content.Context.MODE_PRIVATE) }
     
     var realLocation by remember { mutableStateOf<android.location.Location?>(null) }
     var locationPermissionGranted by remember { mutableStateOf(false) }
@@ -1800,7 +1805,7 @@ fun EmployeeOnSiteScreen(
     }
 
     val unacknowledgedUrgentAlerts = companyAlerts.filter { alert ->
-        alert.priority == "Urgent" && !prefs.getBoolean("acknowledged_alert_${employee.id}_${alert.id}", false)
+        alert.priority == "Urgent" && !prefs.getBoolean("acknowledged_alert_${employee.uuid}_${alert.uuid}", false)
     }
 
     // 1. Separate Task Manager Popup
@@ -1919,7 +1924,7 @@ fun EmployeeOnSiteScreen(
         AlertDialog(
             onDismissRequest = {
                 unacknowledgedUrgentAlerts.forEach { alert ->
-                    prefs.edit().putBoolean("acknowledged_alert_${employee.id}_${alert.id}", true).apply()
+                    prefs.edit().putBoolean("acknowledged_alert_${employee.uuid}_${alert.uuid}", true).apply()
                 }
             },
             title = {
@@ -1976,7 +1981,7 @@ fun EmployeeOnSiteScreen(
                                     )
                                     Spacer(modifier = Modifier.height(4.dp))
                                     Text(
-                                        text = "Posted by ${alert.senderName}",
+                                        text = "Posted by ${alert.title}",
                                         style = MaterialTheme.typography.labelSmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
                                     )
@@ -1990,7 +1995,7 @@ fun EmployeeOnSiteScreen(
                 Button(
                     onClick = {
                         unacknowledgedUrgentAlerts.forEach { alert ->
-                            prefs.edit().putBoolean("acknowledged_alert_${employee.id}_${alert.id}", true).apply()
+                            prefs.edit().putBoolean("acknowledged_alert_${employee.uuid}_${alert.uuid}", true).apply()
                         }
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
@@ -2002,7 +2007,7 @@ fun EmployeeOnSiteScreen(
                 TextButton(
                     onClick = {
                         unacknowledgedUrgentAlerts.forEach { alert ->
-                            prefs.edit().putBoolean("acknowledged_alert_${employee.id}_${alert.id}", true).apply()
+                            prefs.edit().putBoolean("acknowledged_alert_${employee.uuid}_${alert.uuid}", true).apply()
                         }
                     }
                 ) {
@@ -2458,8 +2463,8 @@ fun EmployeeTasksScreen(viewModel: OnSiteViewModel, currentUser: Employee) {
     var selectedSubTab by remember { mutableStateOf(0) } // 0 = Assigned Tasks, 1 = My Personal To-Dos
     var showAddTaskDialog by remember { mutableStateOf(false) } // For personal to-do list
     
-    val assignedTasks = tasks.filter { !it.isPersonal }
-    val personalTasks = tasks.filter { it.isPersonal }
+    val assignedTasks = tasks
+    val personalTasks = emptyList<com.example.data.TodoItem>()
     
     Column(
         modifier = Modifier
@@ -2506,7 +2511,7 @@ fun EmployeeTasksScreen(viewModel: OnSiteViewModel, currentUser: Employee) {
                     shape = RoundedCornerShape(12.dp)
                 ) {
                     Text(
-                        text = "${assignedTasks.count { it.status == "Complete" }}/${assignedTasks.size} Done",
+                        text = "${assignedTasks.count { it.is_completed }}/${assignedTasks.size} Done",
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.primary,
@@ -2580,9 +2585,9 @@ fun EmployeeTasksScreen(viewModel: OnSiteViewModel, currentUser: Employee) {
                                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                                             modifier = Modifier.padding(vertical = 4.dp)
                                         )
-                                        if (task.assignedBy.isNotBlank()) {
+                                        if (false) {  // assignedBy removed
                                             Text(
-                                                text = "Assigned by: ${task.assignedBy}",
+                                                text = "",
                                                 style = MaterialTheme.typography.labelSmall,
                                                 fontWeight = FontWeight.Bold,
                                                 color = MaterialTheme.colorScheme.primary
@@ -2628,7 +2633,7 @@ fun EmployeeTasksScreen(viewModel: OnSiteViewModel, currentUser: Employee) {
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         Icon(
                                             imageVector = when (task.status) {
-                                                "Complete" -> if (task.isApproved) Icons.Default.VerifiedUser else Icons.Default.CheckCircle
+                                                "Complete" -> Icons.Default.CheckCircle
                                                 "Have a Doubt" -> Icons.Default.Help
                                                 else -> Icons.Default.Pending
                                             },
@@ -2643,8 +2648,8 @@ fun EmployeeTasksScreen(viewModel: OnSiteViewModel, currentUser: Employee) {
                                         Spacer(modifier = Modifier.width(4.dp))
                                         Text(
                                             text = when {
-                                                task.status == "Complete" && task.isApproved -> "Approved by CA"
-                                                task.status == "Complete" -> "Completed (Pending Review)"
+                                                // removed isApproved
+                                                task.status == "Complete" -> "Completed"
                                                 task.status == "Have a Doubt" -> "Have a Doubt"
                                                 else -> "Incomplete"
                                             },
@@ -2750,14 +2755,14 @@ fun EmployeeTasksScreen(viewModel: OnSiteViewModel, currentUser: Employee) {
                         Card(
                             modifier = Modifier.fillMaxWidth(),
                             colors = CardDefaults.cardColors(
-                                containerColor = if (task.isCompleted)
+                                containerColor = if (task.is_completed)
                                     MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f)
                                 else
                                     MaterialTheme.colorScheme.surface
                             ),
                             border = BorderStroke(
                                 1.dp,
-                                if (task.isCompleted) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                                if (task.is_completed) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
                             )
                         ) {
                             Row(
@@ -2770,7 +2775,7 @@ fun EmployeeTasksScreen(viewModel: OnSiteViewModel, currentUser: Employee) {
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Checkbox(
-                                        checked = task.isCompleted,
+                                        checked = task.is_completed,
                                         onCheckedChange = { viewModel.toggleTaskCompletion(task) }
                                     )
                                     Column {
@@ -2778,7 +2783,7 @@ fun EmployeeTasksScreen(viewModel: OnSiteViewModel, currentUser: Employee) {
                                             text = task.title,
                                             style = MaterialTheme.typography.bodyMedium,
                                             fontWeight = FontWeight.Bold,
-                                            color = if (task.isCompleted) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface
+                                            color = if (task.is_completed) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface
                                         )
                                         if (task.description.isNotBlank()) {
                                             Text(
@@ -2813,7 +2818,7 @@ fun EmployeeTasksScreen(viewModel: OnSiteViewModel, currentUser: Employee) {
                                     }
                                     Spacer(modifier = Modifier.width(6.dp))
                                     IconButton(
-                                        onClick = { viewModel.deleteTask(task.id) },
+                                        onClick = { viewModel.deleteTask(task.uuid) },
                                         modifier = Modifier.size(24.dp)
                                     ) {
                                         Icon(Icons.Default.Delete, contentDescription = "Delete Personal Task", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp))
@@ -2933,10 +2938,10 @@ fun TalkToScreen(viewModel: OnSiteViewModel, currentUser: Employee, isManager: B
             val targetUsers = remember(employees, isManager, currentUser) {
                 if (isManager) {
                     // Managers see all employees (non-managers)
-                    employees.filter { it.role != "Manager" && it.id != currentUser.id }
+                    employees.filter { it.role != "Manager" && it.uuid != currentUser.uuid }
                 } else {
                     // Employees see all partners (managers)
-                    employees.filter { it.role == "Manager" && it.id != currentUser.id }
+                    employees.filter { it.role == "Manager" && it.uuid != currentUser.uuid }
                 }
             }
 
@@ -2985,7 +2990,7 @@ fun TalkToScreen(viewModel: OnSiteViewModel, currentUser: Employee, isManager: B
                                     ) {
                                         Box(contentAlignment = Alignment.Center) {
                                             Text(
-                                                text = user.name.take(2).uppercase(),
+                                                text = (user.first_name ?: "").take(2).uppercase(),
                                                 style = MaterialTheme.typography.bodyMedium,
                                                 fontWeight = FontWeight.Bold,
                                                 color = if (user.role == "Manager") MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onPrimaryContainer
@@ -2995,12 +3000,12 @@ fun TalkToScreen(viewModel: OnSiteViewModel, currentUser: Employee, isManager: B
 
                                     Column {
                                         Text(
-                                            text = user.name,
+                                            text = (user.first_name ?: ""),
                                             style = MaterialTheme.typography.bodyMedium,
                                             fontWeight = FontWeight.Bold
                                         )
                                         Text(
-                                            text = "${user.role} • ${user.department}",
+                                            text = "${user.role} • ${user.designation ?: ""}",
                                             style = MaterialTheme.typography.labelSmall,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
@@ -3014,8 +3019,8 @@ fun TalkToScreen(viewModel: OnSiteViewModel, currentUser: Employee, isManager: B
                                     if (isManager) {
                                         Button(
                                             onClick = {
-                                                viewModel.sendSummon(user.id)
-                                                android.widget.Toast.makeText(context, "Summon issued to ${user.name}!", android.widget.Toast.LENGTH_SHORT).show()
+                                                viewModel.sendSummon(user.uuid)
+                                                android.widget.Toast.makeText(context, "Summon issued to ${(user.first_name ?: "")}!", android.widget.Toast.LENGTH_SHORT).show()
                                             },
                                             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
                                             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
@@ -3059,8 +3064,8 @@ fun TalkToScreen(viewModel: OnSiteViewModel, currentUser: Employee, isManager: B
 
         val directMessages = remember(messages, currentUser, otherUser) {
             messages.filter {
-                (it.senderId == currentUser.id && it.recipientId == otherUser.id) ||
-                (it.senderId == otherUser.id && it.recipientId == currentUser.id)
+                (it.sender_uuid == currentUser.uuid && it.recipient_uuid == otherUser.uuid) ||
+                (it.sender_uuid == otherUser.uuid && it.recipient_uuid == currentUser.uuid)
             }.sortedBy { it.timestamp }
         }
 
@@ -3156,7 +3161,7 @@ fun TalkToScreen(viewModel: OnSiteViewModel, currentUser: Employee, isManager: B
                         ) {
                             Box(contentAlignment = Alignment.Center) {
                                 Text(
-                                    text = otherUser.name.take(2).uppercase(),
+                                    text = (otherUser.first_name ?: "").take(2).uppercase(),
                                     style = MaterialTheme.typography.bodyMedium,
                                     fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.onPrimary
@@ -3166,12 +3171,12 @@ fun TalkToScreen(viewModel: OnSiteViewModel, currentUser: Employee, isManager: B
 
                         Column {
                             Text(
-                                text = otherUser.name,
+                                text = (otherUser.first_name ?: "Unknown"),
                                 style = MaterialTheme.typography.bodyMedium,
                                 fontWeight = FontWeight.Bold
                             )
                             Text(
-                                text = "${otherUser.role} • ${otherUser.department}",
+                                text = "${otherUser.role} • ${(otherUser.designation ?: "Staff")}",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -3181,8 +3186,8 @@ fun TalkToScreen(viewModel: OnSiteViewModel, currentUser: Employee, isManager: B
                     if (isManager) {
                         Button(
                             onClick = {
-                                viewModel.sendSummon(otherUser.id)
-                                android.widget.Toast.makeText(context, "Summon issued to ${otherUser.name}!", android.widget.Toast.LENGTH_SHORT).show()
+                                viewModel.sendSummon(otherUser.uuid)
+                                android.widget.Toast.makeText(context, "Summon issued to ${otherUser.first_name ?: "Unknown"}!", android.widget.Toast.LENGTH_SHORT).show()
                             },
                             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
                             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
@@ -3222,7 +3227,7 @@ fun TalkToScreen(viewModel: OnSiteViewModel, currentUser: Employee, isManager: B
                     contentPadding = PaddingValues(vertical = 4.dp)
                 ) {
                     items(directMessages) { msg ->
-                        val isSelf = msg.senderId == currentUser.id
+                        val isSelf = msg.sender_uuid == currentUser.uuid
                         val alignment = if (isSelf) Alignment.End else Alignment.Start
                         val cardBg = if (isSelf) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f)
                         val borderStroke = if (isSelf) null else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
@@ -3252,7 +3257,7 @@ fun TalkToScreen(viewModel: OnSiteViewModel, currentUser: Employee, isManager: B
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Text(
-                                            text = if (isSelf) "You" else msg.senderName,
+                                            text = if (isSelf) "You" else msg.sender_uuid.take(8),
                                             style = MaterialTheme.typography.labelSmall,
                                             fontWeight = FontWeight.Bold,
                                             color = if (isSelf) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondary
@@ -3541,7 +3546,7 @@ fun TalkToScreen(viewModel: OnSiteViewModel, currentUser: Employee, isManager: B
                     onClick = {
                         if (messageContent.isNotBlank() || selectedAttachmentType != null) {
                             viewModel.sendDirectMessage(
-                                recipientId = otherUser.id,
+                                recipientId = otherUser.uuid,
                                 content = messageContent,
                                 attachmentType = selectedAttachmentType,
                                 attachmentData = selectedAttachmentData,
@@ -4148,7 +4153,7 @@ fun DiscussionMessageCard(
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             Text(
-                                text = alert.senderName.take(2).uppercase(),
+                                text = alert.title.take(2).uppercase(),
                                 style = MaterialTheme.typography.bodyMedium,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onPrimaryContainer
@@ -4158,7 +4163,7 @@ fun DiscussionMessageCard(
 
                     Column {
                         Text(
-                            text = alert.senderName,
+                            text = alert.title,
                             style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.Bold
                         )
@@ -4648,7 +4653,7 @@ fun ManagerLiveDashboard(viewModel: OnSiteViewModel) {
 
     // Quick Stats Calculation
     val totalCount = employees.size
-    val presentCount = employees.count { it.status == "Present" }
+    val presentCount = employees.count { it.role == "Employee" }
     val absentCount = totalCount - presentCount
 
     Column(
@@ -4801,9 +4806,9 @@ fun ManagerLiveDashboard(viewModel: OnSiteViewModel) {
         )
 
         val filteredEmployees = employees.filter {
-            it.name.contains(searchQuery, ignoreCase = true) ||
-            it.id.contains(searchQuery, ignoreCase = true) ||
-            it.department.contains(searchQuery, ignoreCase = true)
+            (it.first_name ?: "").contains(searchQuery, ignoreCase = true) ||
+            it.uuid.contains(searchQuery, ignoreCase = true) ||
+            (it.designation ?: "").contains(searchQuery, ignoreCase = true)
         }
 
         LazyColumn(
@@ -4814,7 +4819,7 @@ fun ManagerLiveDashboard(viewModel: OnSiteViewModel) {
                 val isCa = emp.role == "Manager"
 
                 // Extract check in & out for today
-                val todayLogs = allLogs.filter { it.employeeId == emp.id && android.text.format.DateUtils.isToday(it.timestamp) }
+                val todayLogs = allLogs.filter { it.user_uuid == emp.uuid && android.text.format.DateUtils.isToday(it.timestamp) }
                 val checkInLog = todayLogs.filter { it.type == "Check-In" }.minByOrNull { it.timestamp }
                 val checkOutLog = todayLogs.filter { it.type == "Check-Out" }.maxByOrNull { it.timestamp }
 
@@ -4845,7 +4850,7 @@ fun ManagerLiveDashboard(viewModel: OnSiteViewModel) {
 
                             Column(modifier = Modifier.padding(start = 8.dp)) {
                                 Text(
-                                    text = emp.name,
+                                    text = (emp.first_name ?: ""),
                                     style = MaterialTheme.typography.bodyMedium,
                                     fontWeight = FontWeight.Bold
                                 )
@@ -4855,7 +4860,7 @@ fun ManagerLiveDashboard(viewModel: OnSiteViewModel) {
                                     modifier = Modifier.padding(vertical = 1.dp)
                                 ) {
                                     if (!isCa) {
-                                        DesignationBadge(empId = emp.id)
+                                        DesignationBadge(empId = emp.uuid)
                                     } else {
                                         Text(
                                             text = "Partner",
@@ -4864,7 +4869,7 @@ fun ManagerLiveDashboard(viewModel: OnSiteViewModel) {
                                         )
                                     }
                                     Text(
-                                        text = "• ID: ${emp.id}", // Unmasked for CA viewing
+                                        text = "• ID: ${emp.uuid}", // Unmasked for CA viewing
                                         style = MaterialTheme.typography.labelSmall,
                                         fontFamily = FontFamily.Monospace,
                                         color = MaterialTheme.colorScheme.primary
@@ -4909,7 +4914,7 @@ fun ManagerLiveDashboard(viewModel: OnSiteViewModel) {
                             }
                         }
 
-                        val statusColor = when (emp.status) {
+                        val statusColor = when ("Active") {
                             "Present" -> Color(0xFF4CAF50)
                             "Late" -> Color(0xFFFFA726)
                             else -> Color(0xFFEF5350)
@@ -4920,7 +4925,7 @@ fun ManagerLiveDashboard(viewModel: OnSiteViewModel) {
                             shape = RoundedCornerShape(4.dp)
                         ) {
                             Text(
-                                text = emp.status,
+                                text = "Active",
                                 color = statusColor,
                                 style = MaterialTheme.typography.labelSmall,
                                 fontWeight = FontWeight.Bold,
@@ -5091,11 +5096,11 @@ fun ManagerTasksDashboard(viewModel: OnSiteViewModel, currentUser: Employee) {
     var showAssignDialog by remember { mutableStateOf(false) }
     val writtenClarifications = remember { mutableStateMapOf<String, String>() }
     
-    val pendingApprovals = allTasks.filter { !it.isPersonal && it.status == "Complete" && !it.isApproved }
+    val pendingApprovals = allTasks.filter { it.is_completed && !false }
 
-    val doubtTasks = allTasks.filter { !it.isPersonal && it.status == "Have a Doubt" }
-    val activeTasks = allTasks.filter { !it.isPersonal && it.status == "Incomplete" }
-    val approvedTasks = allTasks.filter { !it.isPersonal && it.isApproved }
+    val doubtTasks = allTasks.filter { it.status == "Have a Doubt" }
+    val activeTasks = allTasks.filter { it.status == "Incomplete" }
+    val approvedTasks = allTasks.filter { false }
     
     Column(
         modifier = Modifier
@@ -5147,11 +5152,11 @@ fun ManagerTasksDashboard(viewModel: OnSiteViewModel, currentUser: Employee) {
                     
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         doubtTasks.forEach { task ->
-                            val empName = employees.find { it.id == task.employeeId }?.name ?: task.employeeId
+                            val empName = employees.find { it.uuid == task.user_uuid }?.first_name ?: task.user_uuid
                             Card(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .testTag("doubt_task_card_${task.id}"),
+                                    .testTag("doubt_task_card_${task.uuid}"),
                                 colors = CardDefaults.cardColors(containerColor = Color.White),
                                 border = BorderStroke(1.dp, Color(0xFFFFCC80)),
                                 shape = RoundedCornerShape(10.dp)
@@ -5215,13 +5220,13 @@ fun ManagerTasksDashboard(viewModel: OnSiteViewModel, currentUser: Employee) {
                                     Spacer(modifier = Modifier.height(8.dp))
                                     
                                     // Box / Text field to write clarification message
-                                    val currentText = writtenClarifications[task.id] ?: ""
+                                    val currentText = writtenClarifications[task.uuid] ?: ""
                                     OutlinedTextField(
                                         value = currentText,
-                                        onValueChange = { writtenClarifications[task.id] = it },
+                                        onValueChange = { writtenClarifications[task.uuid] = it },
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .testTag("doubt_reply_input_${task.id}"),
+                                            .testTag("doubt_reply_input_${task.uuid}"),
                                         placeholder = { Text("Write clarification details here...", fontSize = 12.sp) },
                                         textStyle = MaterialTheme.typography.bodySmall,
                                         singleLine = false,
@@ -5244,7 +5249,7 @@ fun ManagerTasksDashboard(viewModel: OnSiteViewModel, currentUser: Employee) {
                                                 val explanation = currentText.trim()
                                                 if (explanation.isNotEmpty()) {
                                                     viewModel.sendSecureMessage("@$empName: Clarification on '${task.title}': $explanation 👍")
-                                                    writtenClarifications[task.id] = ""
+                                                    writtenClarifications[task.uuid] = ""
                                                 } else {
                                                     viewModel.sendSecureMessage("@$empName: Heard you had a doubt about '${task.title}'. Let me know how I can guide you! 👍")
                                                 }
@@ -5254,7 +5259,7 @@ fun ManagerTasksDashboard(viewModel: OnSiteViewModel, currentUser: Employee) {
                                             modifier = Modifier
                                                 .weight(1f)
                                                 .height(36.dp)
-                                                .testTag("send_clarification_button_${task.id}")
+                                                .testTag("send_clarification_button_${task.uuid}")
                                         ) {
                                             Icon(
                                                 imageVector = Icons.Default.Send,
@@ -5274,7 +5279,7 @@ fun ManagerTasksDashboard(viewModel: OnSiteViewModel, currentUser: Employee) {
                                             modifier = Modifier
                                                 .weight(1f)
                                                 .height(36.dp)
-                                                .testTag("summon_cabin_button_${task.id}")
+                                                .testTag("summon_cabin_button_${task.uuid}")
                                         ) {
                                             Icon(
                                                 imageVector = Icons.Default.Notifications,
@@ -5319,7 +5324,7 @@ fun ManagerTasksDashboard(viewModel: OnSiteViewModel, currentUser: Employee) {
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 items(pendingApprovals) { task ->
-                    val empName = employees.find { it.id == task.employeeId }?.name ?: task.employeeId
+                    val empName = employees.find { it.uuid == task.user_uuid }?.first_name ?: task.user_uuid
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -5387,7 +5392,7 @@ fun ManagerTasksDashboard(viewModel: OnSiteViewModel, currentUser: Employee) {
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 items(activeTasks) { task ->
-                    val empName = employees.find { it.id == task.employeeId }?.name ?: task.employeeId
+                    val empName = employees.find { it.uuid == task.user_uuid }?.first_name ?: task.user_uuid
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -5425,7 +5430,7 @@ fun ManagerTasksDashboard(viewModel: OnSiteViewModel, currentUser: Employee) {
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 items(approvedTasks) { task ->
-                    val empName = employees.find { it.id == task.employeeId }?.name ?: task.employeeId
+                    val empName = employees.find { it.uuid == task.user_uuid }?.first_name ?: task.user_uuid
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -5446,7 +5451,7 @@ fun ManagerTasksDashboard(viewModel: OnSiteViewModel, currentUser: Employee) {
     }
     
     if (showAssignDialog) {
-        var selectedEmpId by remember { mutableStateOf(eligibleEmployees.firstOrNull()?.id ?: "") }
+        var selectedEmpId by remember { mutableStateOf(eligibleEmployees.firstOrNull()?.uuid ?: "") }
         var taskTitle by remember { mutableStateOf("") }
         var taskDesc by remember { mutableStateOf("") }
         var selectedPriority by remember { mutableStateOf("Medium") }
@@ -5459,7 +5464,7 @@ fun ManagerTasksDashboard(viewModel: OnSiteViewModel, currentUser: Employee) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Select Staff/Article Assignee:", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
                     Box(modifier = Modifier.fillMaxWidth()) {
-                        val currentSelectionName = eligibleEmployees.find { it.id == selectedEmpId }?.name ?: "Select Assignee"
+                        val currentSelectionName = eligibleEmployees.find { it.uuid == selectedEmpId }?.first_name ?: "Select Assignee"
                         OutlinedButton(
                             onClick = { expandedDropdown = true },
                             modifier = Modifier.fillMaxWidth(),
@@ -5474,9 +5479,9 @@ fun ManagerTasksDashboard(viewModel: OnSiteViewModel, currentUser: Employee) {
                             eligibleEmployees.forEach { emp ->
                                 val roleLabel = if (emp.role == "staff") "Staff" else "Article"
                                 DropdownMenuItem(
-                                    text = { Text("${emp.name} ($roleLabel)") },
+                                    text = { Text("${(emp.first_name ?: "")} ($roleLabel)") },
                                     onClick = {
-                                        selectedEmpId = emp.id
+                                        selectedEmpId = emp.uuid
                                         expandedDropdown = false
                                     }
                                 )
@@ -5534,7 +5539,7 @@ fun ManagerTasksDashboard(viewModel: OnSiteViewModel, currentUser: Employee) {
                                 title = taskTitle,
                                 description = taskDesc,
                                 priority = selectedPriority,
-                                assignedBy = currentUser.name
+                                assignedBy = currentUser.uuid
                             )
                             showAssignDialog = false
                         }
@@ -5684,19 +5689,19 @@ fun EmployeeAvatar(
         modifier = modifier,
         contentAlignment = Alignment.Center
     ) {
-        val bitmap = remember(employee.profilePhoto) {
-            employee.profilePhoto?.let { decodeBase64ToBitmap(it) }
+        val bitmap = remember(employee.profile_image) {
+            employee.profile_image?.let { decodeBase64ToBitmap(it) }
         }
         if (bitmap != null) {
             Image(
                 bitmap = bitmap,
-                contentDescription = "${employee.name} Profile Photo",
+                contentDescription = "${(employee.first_name ?: "")} Profile Photo",
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize()
             )
         } else {
             Text(
-                text = employee.name.take(2).uppercase(),
+                text = (employee.first_name ?: "").take(2).uppercase(),
                 fontWeight = FontWeight.Bold,
                 color = if (isCa) Color.White else MaterialTheme.colorScheme.onSecondaryContainer,
                 style = MaterialTheme.typography.bodySmall
@@ -5748,7 +5753,7 @@ fun ProfilePhotoUploadDialog(
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
-                    text = "Insert or update profile photo for ${employee.name}.",
+                    text = "Insert or update profile photo for ${(employee.first_name ?: "")}.",
                     style = MaterialTheme.typography.bodyMedium,
                     textAlign = TextAlign.Center
                 )
@@ -5761,8 +5766,8 @@ fun ProfilePhotoUploadDialog(
                         .background(MaterialTheme.colorScheme.surfaceVariant),
                     contentAlignment = Alignment.Center
                 ) {
-                    val bitmap = remember(employee.profilePhoto) {
-                        employee.profilePhoto?.let { decodeBase64ToBitmap(it) }
+                    val bitmap = remember(employee.profile_image) {
+                        employee.profile_image?.let { decodeBase64ToBitmap(it) }
                     }
                     if (bitmap != null) {
                         Image(
@@ -5773,7 +5778,7 @@ fun ProfilePhotoUploadDialog(
                         )
                     } else {
                         Text(
-                            text = employee.name.take(2).uppercase(),
+                            text = (employee.first_name ?: "").take(2).uppercase(),
                             style = MaterialTheme.typography.headlineSmall,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -5831,7 +5836,7 @@ fun ProfilePhotoUploadDialog(
                                 )
                                 .clickable {
                                     val presetBase64 = generateCustomAvatarBitmap(
-                                        name = employee.name,
+                                        name = (employee.first_name ?: ""),
                                         colorSeed = index * 7 + 3,
                                         styleIndex = index % 3
                                     )
@@ -5842,7 +5847,7 @@ fun ProfilePhotoUploadDialog(
                         ) {
                             val presetBase64 = remember {
                                 generateCustomAvatarBitmap(
-                                    name = employee.name,
+                                    name = (employee.first_name ?: ""),
                                     colorSeed = index * 7 + 3,
                                     styleIndex = index % 3
                                 )
@@ -5874,7 +5879,7 @@ fun ProfilePhotoUploadDialog(
                 Button(
                     onClick = {
                         val cameraBase64 = generateCustomAvatarBitmap(
-                            name = employee.name,
+                            name = (employee.first_name ?: ""),
                             colorSeed = (10..99).random(),
                             styleIndex = (0..2).random()
                         )
@@ -5928,7 +5933,7 @@ fun EmployeeProfileDetailDialog(
     viewModel: OnSiteViewModel,
     onDismiss: () -> Unit
 ) {
-    val details = remember(employee.id) { getDetailedProfile(employee.id) }
+    val details = remember(employee.uuid) { getUserDetails(employee.uuid) }
     var showPhotoUpload by remember { mutableStateOf(false) }
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
     val currentUser by viewModel.currentUser.collectAsStateWithLifecycle()
@@ -5944,8 +5949,8 @@ fun EmployeeProfileDetailDialog(
             ) {
                 EmployeeAvatar(employee, size = 48.dp)
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(employee.name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text("Role: ${employee.role} • Dept: ${employee.department}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text((employee.first_name ?: ""), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text("Role: ${employee.role} • Dept: ${(employee.designation ?: "")}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         },
@@ -5968,16 +5973,16 @@ fun EmployeeProfileDetailDialog(
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 
                 // Detailed profile items
-                ProfileDetailItem("Fathers Name", details.fathersName)
-                ProfileDetailItem("Mothers Name", details.mothersName)
+                ProfileDetailItem("Fathers Name", details.father_name)
+                ProfileDetailItem("Mothers Name", details.mother_name)
                 ProfileDetailItem("Date of Birth", details.dob)
-                ProfileDetailItem("Date of Joining", details.doj)
-                ProfileDetailItem("Blood Group", details.bloodGroup)
-                ProfileDetailItem("Personal Phone", details.phone)
-                ProfileDetailItem("Emergency Contact", details.emergencyContact)
-                ProfileDetailItem("Personal Email", details.email)
-                ProfileDetailItem("Residential Address", details.address)
-                ProfileDetailItem("On-Site ID (Unmasked)", employee.id)
+                ProfileDetailItem("Date of Joining", "")
+                ProfileDetailItem("Blood Group", details.blood_group)
+                ProfileDetailItem("Personal Phone", details.contact)
+                ProfileDetailItem("Emergency Contact", details.current_address)
+                ProfileDetailItem("Personal Email", details.personal_email)
+                ProfileDetailItem("Residential Address", details.permanent_address)
+                ProfileDetailItem("On-Site ID (Unmasked)", employee.uuid)
                 ProfileDetailItem("Security Passcode", employee.password)
 
                 if (isCa) {
@@ -6006,7 +6011,7 @@ fun EmployeeProfileDetailDialog(
             employee = employee,
             onDismiss = { showPhotoUpload = false },
             onPhotoSelected = { base64 ->
-                viewModel.updateEmployeeProfilePhoto(employee.id, base64)
+                viewModel.updateEmployeeProfilePhoto(employee.uuid, base64)
                 showPhotoUpload = false
             }
         )
@@ -6016,11 +6021,11 @@ fun EmployeeProfileDetailDialog(
         AlertDialog(
             onDismissRequest = { showDeleteConfirmDialog = false },
             title = { Text("Confirm Deletion", fontWeight = FontWeight.Bold) },
-            text = { Text("Are you sure you want to permanently delete the profile of ${employee.name}? All attendance logs and records for this user will be removed.") },
+            text = { Text("Are you sure you want to permanently delete the profile of ${(employee.first_name ?: "")}? All attendance logs and records for this user will be removed.") },
             confirmButton = {
                 Button(
                     onClick = {
-                        viewModel.deleteEmployee(employee.id)
+                        viewModel.deleteEmployee(employee.uuid)
                         showDeleteConfirmDialog = false
                         onDismiss()
                     },
@@ -6047,105 +6052,98 @@ fun ProfileDetailItem(label: String, value: String) {
     }
 }
 
-fun getDetailedProfile(empId: String): DetailedProfile {
+fun getUserDetails(empId: String): UserDetails {
     return when (empId) {
-        "CA-GU-01" -> DetailedProfile(
-            id = "CA-GU-01",
-            userId = "CA-GU-01",
-            age = 45,
+        "CA-GU-01" -> UserDetails( last_name = "", gender = "", personal_email = "", profile_image = "", designation = "", first_name = "",
+            uuid = "CA-GU-01",
+            user_uuid = "CA-GU-01",
             dob = "15-Aug-1981",
-            fathersName = "Late Sh. R. K. Gupta",
-            mothersName = "Mrs. Savitri Gupta",
-            address = "74, Trilanga, Bhopal, MP - 462039",
-            email = "anuj.gupta@guptalakhani.com",
-            phone = "+91 94250 11223",
-            emergencyContact = "+91 94250 99887",
-            doj = "10-Apr-2008",
-            bloodGroup = "B+"
+            father_name = "Late Sh. R. K. Gupta",
+            mother_name = "Mrs. Savitri Gupta",
+            permanent_address = "74, Trilanga, Bhopal, MP - 462039",
+            official_email = "anuj.gupta@guptalakhani.com",
+            contact = "+91 94250 11223",
+            current_address = "+91 94250 99887",
+            middle_name = "10-Apr-2008",
+            blood_group = "B+"
         )
-        "CA-LA-02" -> DetailedProfile(
-            id = "CA-LA-02",
-            userId = "CA-LA-02",
-            age = 42,
+        "CA-LA-02" -> UserDetails( last_name = "", gender = "", personal_email = "", profile_image = "", designation = "", first_name = "",
+            uuid = "CA-LA-02",
+            user_uuid = "CA-LA-02",
             dob = "22-Nov-1983",
-            fathersName = "Sh. Suresh Lakhani",
-            mothersName = "Mrs. Pushpa Lakhani",
-            address = "102, Riviera Town, Bhopal, MP - 462003",
-            email = "meera.lakhani@guptalakhani.com",
-            phone = "+91 98930 44556",
-            emergencyContact = "+91 98930 11223",
-            doj = "15-Jul-2010",
-            bloodGroup = "O+"
+            father_name = "Sh. Suresh Lakhani",
+            mother_name = "Mrs. Pushpa Lakhani",
+            permanent_address = "102, Riviera Town, Bhopal, MP - 462003",
+            official_email = "meera.lakhani@guptalakhani.com",
+            contact = "+91 98930 44556",
+            current_address = "+91 98930 11223",
+            middle_name = "15-Jul-2010",
+            blood_group = "O+"
         )
-        "EMP-RS-54" -> DetailedProfile(
-            id = "EMP-RS-54",
-            userId = "EMP-RS-54",
-            age = 22,
+        "EMP-RS-54" -> UserDetails( last_name = "", gender = "", personal_email = "", profile_image = "", designation = "", first_name = "",
+            uuid = "EMP-RS-54",
+            user_uuid = "EMP-RS-54",
             dob = "12-Oct-2003",
-            fathersName = "Mr. Ramesh Sharma",
-            mothersName = "Mrs. Sunita Sharma",
-            address = "H.No. 45, E-7, Arera Colony, Bhopal, MP - 462016",
-            email = "rahul.sharma@guptalakhani.com",
-            phone = "+91 98765 43210",
-            emergencyContact = "+91 98765 99999",
-            doj = "01-Jun-2025",
-            bloodGroup = "O+"
+            father_name = "Mr. Ramesh Sharma",
+            mother_name = "Mrs. Sunita Sharma",
+            permanent_address = "H.No. 45, E-7, Arera Colony, Bhopal, MP - 462016",
+            official_email = "rahul.sharma@guptalakhani.com",
+            contact = "+91 98765 43210",
+            current_address = "+91 98765 99999",
+            middle_name = "01-Jun-2025",
+            blood_group = "O+"
         )
-        "EMP-PP-88" -> DetailedProfile(
-            id = "EMP-PP-88",
-            userId = "EMP-PP-88",
-            age = 24,
+        "EMP-PP-88" -> UserDetails( last_name = "", gender = "", personal_email = "", profile_image = "", designation = "", first_name = "",
+            uuid = "EMP-PP-88",
+            user_uuid = "EMP-PP-88",
             dob = "05-May-2002",
-            fathersName = "Mr. Kirit Patel",
-            mothersName = "Mrs. Kokila Patel",
-            address = "Flat 304, Gulmohar Heights, M.P. Nagar, Bhopal, MP - 462011",
-            email = "priya.patel@guptalakhani.com",
-            phone = "+91 91112 33445",
-            emergencyContact = "+91 91112 55667",
-            doj = "15-Jan-2024",
-            bloodGroup = "A+"
+            father_name = "Mr. Kirit Patel",
+            mother_name = "Mrs. Kokila Patel",
+            permanent_address = "Flat 304, Gulmohar Heights, M.P. Nagar, Bhopal, MP - 462011",
+            official_email = "priya.patel@guptalakhani.com",
+            contact = "+91 91112 33445",
+            current_address = "+91 91112 55667",
+            middle_name = "15-Jan-2024",
+            blood_group = "A+"
         )
-        "EMP-VS-22" -> DetailedProfile(
-            id = "EMP-VS-22",
-            userId = "EMP-VS-22",
-            age = 26,
+        "EMP-VS-22" -> UserDetails( last_name = "", gender = "", personal_email = "", profile_image = "", designation = "", first_name = "",
+            uuid = "EMP-VS-22",
+            user_uuid = "EMP-VS-22",
             dob = "18-Sep-2000",
-            fathersName = "Mr. Mahendra Singh",
-            mothersName = "Mrs. Rajeshwari Singh",
-            address = "C-12, Shahpura, Bhopal, MP - 462039",
-            email = "vikram.singh@guptalakhani.com",
-            phone = "+91 95890 77889",
-            emergencyContact = "+91 95890 11223",
-            doj = "10-Nov-2023",
-            bloodGroup = "AB+"
+            father_name = "Mr. Mahendra Singh",
+            mother_name = "Mrs. Rajeshwari Singh",
+            permanent_address = "C-12, Shahpura, Bhopal, MP - 462039",
+            official_email = "vikram.singh@guptalakhani.com",
+            contact = "+91 95890 77889",
+            current_address = "+91 95890 11223",
+            middle_name = "10-Nov-2023",
+            blood_group = "AB+"
         )
-        "EMP-RM-19" -> DetailedProfile(
-            id = "EMP-RM-19",
-            userId = "EMP-RM-19",
-            age = 23,
+        "EMP-RM-19" -> UserDetails( last_name = "", gender = "", personal_email = "", profile_image = "", designation = "", first_name = "",
+            uuid = "EMP-RM-19",
+            user_uuid = "EMP-RM-19",
             dob = "30-Jan-2003",
-            fathersName = "Mr. Nitin Mehta",
-            mothersName = "Mrs. Alpa Mehta",
-            address = "B-8, Saket Nagar, Bhopal, MP - 462024",
-            email = "rohan.mehta@guptalakhani.com",
-            phone = "+91 70001 22334",
-            emergencyContact = "+91 70001 99887",
-            doj = "01-Mar-2025",
-            bloodGroup = "A-"
+            father_name = "Mr. Nitin Mehta",
+            mother_name = "Mrs. Alpa Mehta",
+            permanent_address = "B-8, Saket Nagar, Bhopal, MP - 462024",
+            official_email = "rohan.mehta@guptalakhani.com",
+            contact = "+91 70001 22334",
+            current_address = "+91 70001 99887",
+            middle_name = "01-Mar-2025",
+            blood_group = "A-"
         )
-        else -> DetailedProfile(
-            id = empId,
-            userId = empId,
-            age = 23,
+        else -> UserDetails( last_name = "", gender = "", personal_email = "", profile_image = "", designation = "", first_name = "",
+            uuid = empId,
+            user_uuid = empId,
             dob = "01-Jan-2003",
-            fathersName = "Father Name",
-            mothersName = "Mother Name",
-            address = "Bhopal, Madhya Pradesh",
-            email = "support@guptalakhani.com",
-            phone = "+91 99999 99999",
-            emergencyContact = "+91 99999 88888",
-            doj = "01-Jan-2025",
-            bloodGroup = "O+"
+            father_name = "Father Name",
+            mother_name = "Mother Name",
+            permanent_address = "Bhopal, Madhya Pradesh",
+            official_email = "support@guptalakhani.com",
+            contact = "+91 99999 99999",
+            current_address = "+91 99999 88888",
+            middle_name = "01-Jan-2025",
+            blood_group = "O+"
         )
     }
 }
@@ -6276,9 +6274,9 @@ fun PartnerAttendanceScreen(viewModel: OnSiteViewModel) {
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     // Group by employee
-                    val logsByEmployee = matchingLogsForDay.groupBy { it.employeeId }
+                    val logsByEmployee = matchingLogsForDay.groupBy { it.user_uuid }
                     items(logsByEmployee.keys.toList()) { empId ->
-                        val empName = logsByEmployee[empId]?.firstOrNull()?.employeeName ?: "Employee"
+                        val empName = logsByEmployee[empId]?.firstOrNull()?.user_uuid ?: "Employee"
                         val empLogs = logsByEmployee[empId] ?: emptyList()
                         val checkIn = empLogs.filter { it.type == "Check-In" }.minByOrNull { it.timestamp }
                         val checkOut = empLogs.filter { it.type == "Check-Out" }.maxByOrNull { it.timestamp }
@@ -6336,7 +6334,7 @@ fun PartnerAttendanceScreen(viewModel: OnSiteViewModel) {
 
         } else {
             // INDIVIDUAL SEARCH
-            val selectedEmployee = employees.find { it.id == selectedEmployeeId }
+            val selectedEmployee = employees.find { it.uuid == selectedEmployeeId }
 
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -6352,7 +6350,7 @@ fun PartnerAttendanceScreen(viewModel: OnSiteViewModel) {
                             onClick = { showEmpDropdown = true },
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Text(selectedEmployee?.name ?: "Select Staff Member", fontWeight = FontWeight.Bold)
+                            Text(selectedEmployee?.first_name ?: "Select Staff Member", fontWeight = FontWeight.Bold)
                             Spacer(modifier = Modifier.weight(1f))
                             Icon(Icons.Default.ArrowDropDown, contentDescription = null)
                         }
@@ -6364,9 +6362,9 @@ fun PartnerAttendanceScreen(viewModel: OnSiteViewModel) {
                         ) {
                             employees.forEach { emp ->
                                 DropdownMenuItem(
-                                    text = { Text("${emp.name} (${emp.role})", fontWeight = FontWeight.Bold) },
+                                    text = { Text("${(emp.first_name ?: "")} (${emp.role})", fontWeight = FontWeight.Bold) },
                                     onClick = {
-                                        selectedEmployeeId = emp.id
+                                        selectedEmployeeId = emp.uuid
                                         showEmpDropdown = false
                                     }
                                 )
@@ -6429,7 +6427,7 @@ fun PartnerAttendanceScreen(viewModel: OnSiteViewModel) {
                 // Filter logs within range for this specific employee
                 val filteredLogs = remember(allLogs, selectedEmployeeId, fromDate, toDate) {
                     allLogs.filter { log ->
-                        if (log.employeeId != selectedEmployeeId) return@filter false
+                        if (log.user_uuid != selectedEmployeeId) return@filter false
                         val logDateStr = sdf.format(java.util.Date(log.timestamp))
                         val logDate = try { sdf.parse(logDateStr) } catch (e: Exception) { null }
                         if (logDate != null) {
@@ -6467,8 +6465,8 @@ fun PartnerAttendanceScreen(viewModel: OnSiteViewModel) {
                 // Filter approved leaves taken in date range
                 val approvedLeaves = remember(allLeaveApplications, selectedEmployeeId, fromDate, toDate) {
                     allLeaveApplications.filter { leave ->
-                        leave.employeeId == selectedEmployeeId && leave.status == "Accepted" && run {
-                            val leaveDate = try { sdf.parse(leave.startDate) } catch (e: Exception) { null }
+                        leave.user_uuid == selectedEmployeeId && leave.status == "Accepted" && run {
+                            val leaveDate = try { sdf.parse(leave.start_date.toString()) } catch (e: Exception) { null }
                             if (leaveDate != null) {
                                 val afterFrom = fromDate?.let { !leaveDate.before(it) } ?: true
                                 val beforeTo = toDate?.let { !leaveDate.after(it) } ?: true
@@ -6527,7 +6525,7 @@ fun PartnerAttendanceScreen(viewModel: OnSiteViewModel) {
                             .weight(1f),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text("No records found in this range for ${selectedEmployee?.name}.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("No records found in this range for ${selectedEmployee?.first_name}.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 } else {
                     LazyColumn(
@@ -6595,7 +6593,7 @@ fun PartnerAttendanceScreen(viewModel: OnSiteViewModel) {
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                        Text("Leave: ${leave.startDate}", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = Color(0xFF8D6E63))
+                                        Text("Leave: ${leave.start_date}", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = Color(0xFF8D6E63))
                                         Text("Reason: ${leave.reason}", style = MaterialTheme.typography.labelSmall, color = Color.DarkGray)
                                     }
 
@@ -6646,8 +6644,8 @@ fun PartnerAttendanceScreen(viewModel: OnSiteViewModel) {
 
 @Composable
 fun MyProfileScreen(viewModel: OnSiteViewModel, user: Employee) {
-    val profileDbState by viewModel.getDetailedProfileFlow(user.id).collectAsStateWithLifecycle(initialValue = null)
-    val profile = profileDbState ?: remember(user.id) { getDetailedProfile(user.id) }
+    val profileDbState by viewModel.getUserDetails(user.uuid).collectAsStateWithLifecycle(initialValue = null)
+    val profile = profileDbState ?: remember(user.uuid) { getUserDetails(user.uuid) }
     val isDarkModeState by viewModel.isDarkMode.collectAsStateWithLifecycle()
     val colorThemeState by viewModel.colorTheme.collectAsStateWithLifecycle()
     val isFirestoreEnabledState by viewModel.isFirestoreEnabled.collectAsStateWithLifecycle()
@@ -6691,20 +6689,20 @@ fun MyProfileScreen(viewModel: OnSiteViewModel, user: Employee) {
     // Initialize/Update text states when entering edit mode or when profile changes
     LaunchedEffect(isEditing, profile, user) {
         if (isEditing) {
-            editAge = profile.age.toString()
+            editAge = "".toString()
             editDob = profile.dob
-            editFathersName = profile.fathersName
-            editMothersName = profile.mothersName
-            editAddress = profile.address
-            editPhone = profile.phone
-            editEmail = profile.email
-            editEmergencyContact = profile.emergencyContact
-            editDoj = profile.doj
-            editBloodGroup = profile.bloodGroup
+            editFathersName = ""
+            editMothersName = ""
+            editAddress = ""
+            editPhone = ""
+            editEmail = ""
+            editEmergencyContact = ""
+            editDoj = ""
+            editBloodGroup = ""
 
             // Core Employee fields
-            editName = user.name
-            editDept = user.department
+            editName = (user.first_name ?: "")
+            editDept = (user.designation ?: "")
             editPassword = user.password
         }
     }
@@ -6779,7 +6777,7 @@ fun MyProfileScreen(viewModel: OnSiteViewModel, user: Employee) {
                 Spacer(modifier = Modifier.height(6.dp))
 
                 Text(
-                    text = user.name,
+                    text = (user.first_name ?: ""),
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onPrimaryContainer
@@ -6799,7 +6797,7 @@ fun MyProfileScreen(viewModel: OnSiteViewModel, user: Employee) {
                             color = MaterialTheme.colorScheme.primary
                         )
                     } else {
-                        DesignationBadge(empId = user.id)
+                        DesignationBadge(empId = user.uuid)
                     }
                 }
             }
@@ -6828,24 +6826,29 @@ fun MyProfileScreen(viewModel: OnSiteViewModel, user: Employee) {
                     )
                     Button(
                         onClick = {
-                            val updatedProfile = DetailedProfile(
-                                id = user.id,
-                                userId = user.id,
-                                age = editAge.toIntOrNull() ?: profile.age,
+                            val updatedProfile = UserDetails(
+                                uuid = user.uuid,
+                                user_uuid = user.uuid,
+                                first_name = editName,
+                                middle_name = "",
+                                last_name = "",
+                                father_name = editFathersName,
+                                mother_name = editMothersName,
+                                gender = "",
                                 dob = editDob,
-                                fathersName = editFathersName,
-                                mothersName = editMothersName,
-                                address = editAddress,
-                                phone = editPhone,
-                                email = editEmail,
-                                emergencyContact = editEmergencyContact,
-                                doj = editDoj,
-                                bloodGroup = editBloodGroup
+                                blood_group = editBloodGroup,
+                                contact = editPhone,
+                                official_email = editEmail,
+                                personal_email = "",
+                                permanent_address = editAddress,
+                                current_address = "",
+                                profile_image = "",
+                                designation = editDept
                             )
-                            viewModel.saveDetailedProfile(updatedProfile)
+                            viewModel.saveUserDetails(updatedProfile)
                             // Save the core Employee details
                             viewModel.updateEmployeeDetails(
-                                employeeId = user.id,
+                                employeeId = user.uuid,
                                 name = editName,
                                 email = editEmail, // Keep emails in sync
                                 department = editDept,
@@ -7040,43 +7043,43 @@ fun MyProfileScreen(viewModel: OnSiteViewModel, user: Employee) {
         } else {
             // PERSONAL DETAILS CARD
             ProfileSectionCard(title = "Personal Information", icon = Icons.Default.Person) {
-                ProfileRow(label = "Age", value = "${profile.age} Years")
+                ProfileRow(label = "Age", value = "${""} Years")
                 Divider(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
                 ProfileRow(label = "Date of Birth (DOB)", value = profile.dob)
                 Divider(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-                ProfileRow(label = "Blood Group", value = profile.bloodGroup)
+                ProfileRow(label = "Blood Group", value = "")
             }
 
             // FAMILY DETAILS CARD
             ProfileSectionCard(title = "Family Details", icon = Icons.Default.Groups) {
-                ProfileRow(label = "Father's Name", value = profile.fathersName)
+                ProfileRow(label = "Father's Name", value = "")
                 Divider(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-                ProfileRow(label = "Mother's Name", value = profile.mothersName)
+                ProfileRow(label = "Mother's Name", value = "")
             }
 
             // CONTACT DETAILS CARD
             ProfileSectionCard(title = "Contact & Address Details", icon = Icons.Default.Business) {
-                ProfileRow(label = "Mobile Number", value = profile.phone)
+                ProfileRow(label = "Mobile Number", value = "")
                 Divider(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-                ProfileRow(label = "Official Email", value = profile.email)
+                ProfileRow(label = "Official Email", value = "")
                 Divider(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-                ProfileRow(label = "Emergency Contact", value = profile.emergencyContact)
+                ProfileRow(label = "Emergency Contact", value = "")
                 Divider(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-                ProfileRow(label = "Permanent Address", value = profile.address)
+                ProfileRow(label = "Permanent Address", value = "")
             }
 
             // PROFESSIONAL DETAILS CARD
             ProfileSectionCard(title = "Professional Placement", icon = Icons.Default.Work) {
-                ProfileRow(label = "Date of Joining (DOJ)", value = profile.doj)
+                ProfileRow(label = "Date of Joining (DOJ)", value = "")
                 Divider(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
                 ProfileRow(label = "Firm Chambers Placement", value = "Bhopal Branch, Zone-I")
                 Divider(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-                ProfileRow(label = "Audit Department", value = user.department)
+                ProfileRow(label = "Audit Department", value = (user.designation ?: ""))
             }
 
             // SECURITY & CREDENTIALS CARD
             ProfileSectionCard(title = "Security & Credentials", icon = Icons.Default.Lock) {
-                ProfileRow(label = "Account ID", value = user.id)
+                ProfileRow(label = "Account ID", value = user.uuid)
                 Divider(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
                 ProfileRow(label = "Account Role", value = if (user.role == "Manager") "CA Partner" else "Article / Staff")
                 Divider(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
@@ -7110,7 +7113,7 @@ fun MyProfileScreen(viewModel: OnSiteViewModel, user: Employee) {
                         Spacer(modifier = Modifier.width(12.dp))
                         Text("Two-Factor Authentication", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
                     }
-                    var is2faChecked by remember(user.is_2fa_enabled) { mutableStateOf(user.is_2fa_enabled) }
+                    var is2faChecked by remember(user.is_mfa_enabled) { mutableStateOf(user.is_mfa_enabled) }
                     Switch(
                         checked = is2faChecked,
                         onCheckedChange = { checked ->
@@ -7240,7 +7243,7 @@ fun MyProfileScreen(viewModel: OnSiteViewModel, user: Employee) {
             employee = user,
             onDismiss = { showPhotoUpload = false },
             onPhotoSelected = { base64 ->
-                viewModel.updateEmployeeProfilePhoto(user.id, base64)
+                viewModel.updateEmployeeProfilePhoto(user.uuid, base64)
                 showPhotoUpload = false
             }
         )
@@ -7660,7 +7663,7 @@ fun BirthdayCelebrationsSection(viewModel: OnSiteViewModel) {
     val employees by viewModel.employees.collectAsStateWithLifecycle()
     
     val birthdayList = employees.mapNotNull { emp ->
-        val profile = getDetailedProfile(emp.id)
+        val profile = getUserDetails(emp.uuid)
         val status = getBirthdayStatus(profile.dob)
         if (status.isNotEmpty()) {
             Pair(emp, status)
@@ -7699,7 +7702,7 @@ fun BirthdayCelebrationsSection(viewModel: OnSiteViewModel) {
                 }
                 
                 birthdayList.forEach { (emp, status) ->
-                    val profile = getDetailedProfile(emp.id)
+                    val profile = getUserDetails(emp.uuid)
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -7710,7 +7713,7 @@ fun BirthdayCelebrationsSection(viewModel: OnSiteViewModel) {
                         Column(modifier = Modifier.weight(1f)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(
-                                    text = emp.name,
+                                    text = (emp.first_name ?: ""),
                                     style = MaterialTheme.typography.bodyMedium,
                                     fontWeight = FontWeight.Bold
                                 )
@@ -7729,7 +7732,7 @@ fun BirthdayCelebrationsSection(viewModel: OnSiteViewModel) {
                                 }
                             }
                             Text(
-                                text = "Age: ${profile.age} • Designation: ${if (emp.role == "Manager") "Senior Partner" else "Article/Staff"}",
+                                text = "Designation: ${if (emp.role == "Manager") "Senior Partner" else "Article/Staff"}",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -7737,7 +7740,7 @@ fun BirthdayCelebrationsSection(viewModel: OnSiteViewModel) {
                         
                         Button(
                             onClick = {
-                                viewModel.sendSecureMessage("Wishing a spectacular Happy Birthday to our amazing colleague, ${emp.name}! Hope you have an awesome day! 🎉🎈🎂")
+                                viewModel.sendSecureMessage("Wishing a spectacular Happy Birthday to our amazing colleague, ${(emp.first_name ?: "")}! Hope you have an awesome day! 🎉🎈🎂")
                             },
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = MaterialTheme.colorScheme.primary
@@ -7766,7 +7769,7 @@ fun LeaveRequestEmployeeScreen(viewModel: OnSiteViewModel, user: Employee) {
     val employees by viewModel.employees.collectAsStateWithLifecycle()
     val allLeaveRequests by viewModel.allLeaveRequests.collectAsStateWithLifecycle()
 
-    val myLeaveRequests = allLeaveRequests.filter { it.employeeId == user.id }
+    val myLeaveRequests = allLeaveRequests.filter { it.user_uuid == user.uuid }
     val cas = employees.filter { it.role == "Manager" }
 
     var selectedSection by remember { mutableStateOf(0) } // 0 = Apply, 1 = Previous Leaves
@@ -7870,7 +7873,7 @@ fun LeaveRequestEmployeeScreen(viewModel: OnSiteViewModel, user: Employee) {
                             )
                             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                 cas.forEach { ca ->
-                                    val isSelected = selectedCaIds.contains(ca.id)
+                                    val isSelected = selectedCaIds.contains(ca.uuid)
                                     Row(
                                         verticalAlignment = Alignment.CenterVertically,
                                         modifier = Modifier
@@ -7882,9 +7885,9 @@ fun LeaveRequestEmployeeScreen(viewModel: OnSiteViewModel, user: Employee) {
                                             )
                                             .clickable {
                                                 selectedCaIds = if (isSelected) {
-                                                    selectedCaIds - ca.id
+                                                    selectedCaIds - ca.uuid
                                                 } else {
-                                                    selectedCaIds + ca.id
+                                                    selectedCaIds + ca.uuid
                                                 }
                                             }
                                             .padding(horizontal = 12.dp, vertical = 6.dp)
@@ -7893,14 +7896,14 @@ fun LeaveRequestEmployeeScreen(viewModel: OnSiteViewModel, user: Employee) {
                                             checked = isSelected,
                                             onCheckedChange = { checked ->
                                                 selectedCaIds = if (checked == true) {
-                                                    selectedCaIds + ca.id
+                                                    selectedCaIds + ca.uuid
                                                 } else {
-                                                    selectedCaIds - ca.id
+                                                    selectedCaIds - ca.uuid
                                                 }
                                             }
                                         )
                                         Spacer(modifier = Modifier.width(8.dp))
-                                        Text(ca.name, style = MaterialTheme.typography.bodyMedium)
+                                        Text(ca.first_name ?: "Unknown", style = MaterialTheme.typography.bodyMedium)
                                     }
                                 }
                             }
@@ -7966,7 +7969,7 @@ fun LeaveRequestEmployeeScreen(viewModel: OnSiteViewModel, user: Employee) {
                                     errorMessage = "Please select at least one CA or choose All CAs."
                                 } else {
                                     val finalIds = if (applyToAll) listOf("All") else selectedCaIds.toList()
-                                    val finalNames = if (applyToAll) listOf("All CAs") else cas.filter { selectedCaIds.contains(it.id) }.map { it.name }
+                                    val finalNames = if (applyToAll) listOf("All CAs") else cas.filter { selectedCaIds.contains(it.uuid) }.map { (it.first_name ?: "") }
                                     viewModel.submitLeaveRequest(
                                         reason = reason,
                                         startDate = startDate,
@@ -8036,13 +8039,13 @@ fun LeaveRequestEmployeeScreen(viewModel: OnSiteViewModel, user: Employee) {
                                 ) {
                                     Column {
                                         Text(
-                                            text = "${req.startDate} to ${req.endDate}",
+                                            text = "${req.start_date} to ${req.end_date}",
                                             style = MaterialTheme.typography.titleMedium,
                                             fontWeight = FontWeight.Bold,
                                             color = MaterialTheme.colorScheme.primary
                                         )
                                         Text(
-                                            text = "Addressed To: ${req.recipientNames}",
+                                            text = "Addressed To: ${req}",
                                             style = MaterialTheme.typography.labelSmall,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
@@ -8091,15 +8094,15 @@ fun LeaveRequestEmployeeScreen(viewModel: OnSiteViewModel, user: Employee) {
                                     ) {
                                         Column(modifier = Modifier.padding(10.dp)) {
                                             Text(
-                                                text = "${req.status} by: ${req.respondedBy}",
+                                                text = "${req.status} by: ${req.manager_uuid}",
                                                 style = MaterialTheme.typography.labelSmall,
                                                 fontWeight = FontWeight.Bold,
                                                 color = if (req.status == "Accepted") Color(0xFF33691E) else Color(0xFFB71C1C)
                                             )
-                                            if (req.responseComment.isNotEmpty()) {
+                                            if (req.comment.isNotEmpty()) {
                                                 Spacer(modifier = Modifier.height(2.dp))
                                                 Text(
-                                                    text = "CA Remark: \"${req.responseComment}\"",
+                                                    text = "CA Remark: \"${req.comment}\"",
                                                     style = MaterialTheme.typography.bodySmall,
                                                     fontStyle = FontStyle.Italic,
                                                     color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -8147,7 +8150,7 @@ fun LeaveRequestsManagerScreen(viewModel: OnSiteViewModel, user: Employee) {
 
     // Determine requests addressed to this CA specifically, or all CAs
     val pendingRequests = allLeaveRequests.filter {
-        it.status == "Pending" && (it.recipientIds.contains("All") || it.recipientIds.contains(user.id))
+        it.status == "Pending"
     }
     
     val processedRequests = allLeaveRequests.filter { it.status != "Pending" }
@@ -8247,13 +8250,13 @@ fun LeaveRequestsManagerScreen(viewModel: OnSiteViewModel, user: Employee) {
                                 ) {
                                     Column {
                                         Text(
-                                            text = req.employeeName,
+                                            text = req.user_uuid,
                                             style = MaterialTheme.typography.titleMedium,
                                             fontWeight = FontWeight.Bold,
                                             color = MaterialTheme.colorScheme.primary
                                         )
                                         Text(
-                                            text = "${req.employeeRole} • ID: ${req.employeeId}",
+                                            text = "${req.user_uuid} • ID: ${req.user_uuid}",
                                             style = MaterialTheme.typography.labelSmall,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
@@ -8279,7 +8282,7 @@ fun LeaveRequestsManagerScreen(viewModel: OnSiteViewModel, user: Employee) {
                                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                         Icon(Icons.Default.DateRange, contentDescription = null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.secondary)
                                         Text(
-                                            text = "Requested Dates: ${req.startDate} to ${req.endDate}",
+                                            text = "Requested Dates: ${req.start_date} to ${req.end_date}",
                                             style = MaterialTheme.typography.bodySmall,
                                             fontWeight = FontWeight.Bold
                                         )
@@ -8290,7 +8293,7 @@ fun LeaveRequestsManagerScreen(viewModel: OnSiteViewModel, user: Employee) {
                                         color = MaterialTheme.colorScheme.onSurface
                                     )
                                     Text(
-                                        text = "Addressed To: ${req.recipientNames}",
+                                        text = "Addressed To: ${req}",
                                         style = MaterialTheme.typography.labelSmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
@@ -8311,7 +8314,7 @@ fun LeaveRequestsManagerScreen(viewModel: OnSiteViewModel, user: Employee) {
                                 ) {
                                     Button(
                                         onClick = {
-                                            viewModel.approveLeaveRequest(req.id, user.name, comment)
+                                            viewModel.approveLeaveRequest(req.uuid, (user.first_name ?: ""), comment)
                                         },
                                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32)),
                                         modifier = Modifier.weight(1f)
@@ -8323,7 +8326,7 @@ fun LeaveRequestsManagerScreen(viewModel: OnSiteViewModel, user: Employee) {
 
                                     Button(
                                         onClick = {
-                                            viewModel.rejectLeaveRequest(req.id, user.name, comment)
+                                            viewModel.rejectLeaveRequest(req.uuid, (user.first_name ?: ""), comment)
                                         },
                                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFC62828)),
                                         modifier = Modifier.weight(1f)
@@ -8380,13 +8383,13 @@ fun LeaveRequestsManagerScreen(viewModel: OnSiteViewModel, user: Employee) {
                                 ) {
                                     Column {
                                         Text(
-                                            text = req.employeeName,
+                                            text = req.user_uuid,
                                             style = MaterialTheme.typography.titleMedium,
                                             fontWeight = FontWeight.Bold,
                                             color = MaterialTheme.colorScheme.primary
                                         )
                                         Text(
-                                            text = "Requested Dates: ${req.startDate} to ${req.endDate}",
+                                            text = "Requested Dates: ${req.start_date} to ${req.end_date}",
                                             style = MaterialTheme.typography.labelSmall,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
@@ -8423,7 +8426,7 @@ fun LeaveRequestsManagerScreen(viewModel: OnSiteViewModel, user: Employee) {
                                 )
 
                                 Text(
-                                    text = "Addressed To: ${req.recipientNames}",
+                                    text = "Addressed To: ${req}",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -8440,15 +8443,15 @@ fun LeaveRequestsManagerScreen(viewModel: OnSiteViewModel, user: Employee) {
                                 ) {
                                     Column(modifier = Modifier.padding(10.dp)) {
                                         Text(
-                                            text = "${req.status} by: ${req.respondedBy}",
+                                            text = "${req.status} by: ${req.manager_uuid}",
                                             style = MaterialTheme.typography.labelSmall,
                                             fontWeight = FontWeight.Bold,
                                             color = if (req.status == "Accepted") Color(0xFF33691E) else Color(0xFFB71C1C)
                                         )
-                                        if (req.responseComment.isNotEmpty()) {
+                                        if (req.comment.isNotEmpty()) {
                                             Spacer(modifier = Modifier.height(2.dp))
                                             Text(
-                                                text = "Remarks: \"${req.responseComment}\"",
+                                                text = "Remarks: \"${req.comment}\"",
                                                 style = MaterialTheme.typography.bodySmall,
                                                 fontStyle = FontStyle.Italic,
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -8463,7 +8466,7 @@ fun LeaveRequestsManagerScreen(viewModel: OnSiteViewModel, user: Employee) {
             }
         } else {
             // INDIVIDUAL LEAVES
-            val selectedEmployee = employees.find { it.id == selectedEmployeeId }
+            val selectedEmployee = employees.find { it.uuid == selectedEmployeeId }
 
             Column(
                 modifier = Modifier
@@ -8485,7 +8488,7 @@ fun LeaveRequestsManagerScreen(viewModel: OnSiteViewModel, user: Employee) {
                                 onClick = { showEmpDropdown = true },
                                 modifier = Modifier.fillMaxWidth()
                             ) {
-                                Text(selectedEmployee?.name ?: "Select Staff Member", fontWeight = FontWeight.Bold)
+                                Text(selectedEmployee?.first_name ?: "Select Staff Member", fontWeight = FontWeight.Bold)
                                 Spacer(modifier = Modifier.weight(1f))
                                 Icon(Icons.Default.ArrowDropDown, contentDescription = null)
                             }
@@ -8497,9 +8500,9 @@ fun LeaveRequestsManagerScreen(viewModel: OnSiteViewModel, user: Employee) {
                             ) {
                                 employees.forEach { emp ->
                                     DropdownMenuItem(
-                                        text = { Text("${emp.name} (${emp.role})", fontWeight = FontWeight.Bold) },
+                                        text = { Text("${(emp.first_name ?: "")} (${emp.role})", fontWeight = FontWeight.Bold) },
                                         onClick = {
-                                            selectedEmployeeId = emp.id
+                                            selectedEmployeeId = emp.uuid
                                             showEmpDropdown = false
                                         }
                                     )
@@ -8520,7 +8523,7 @@ fun LeaveRequestsManagerScreen(viewModel: OnSiteViewModel, user: Employee) {
                     }
                 } else {
                     // Filter leaves for this employee
-                    val empLeaves = allLeaveRequests.filter { it.employeeId == selectedEmployeeId }
+                    val empLeaves = allLeaveRequests.filter { it.user_uuid == selectedEmployeeId }
                     val empPending = empLeaves.filter { it.status == "Pending" }
                     val empAccepted = empLeaves.filter { it.status == "Accepted" }
                     val empRejected = empLeaves.filter { it.status == "Rejected" }
@@ -8570,7 +8573,7 @@ fun LeaveRequestsManagerScreen(viewModel: OnSiteViewModel, user: Employee) {
                                 .weight(1f),
                             contentAlignment = Alignment.Center
                         ) {
-                            Text("No leave records found for ${selectedEmployee?.name}.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("No leave records found for ${selectedEmployee?.first_name}.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     } else {
                         LazyColumn(
@@ -8591,7 +8594,7 @@ fun LeaveRequestsManagerScreen(viewModel: OnSiteViewModel, user: Employee) {
                                         ) {
                                             Column {
                                                 Text(
-                                                    text = "Dates: ${req.startDate} to ${req.endDate}",
+                                                    text = "Dates: ${req.start_date} to ${req.end_date}",
                                                     style = MaterialTheme.typography.bodyMedium,
                                                     fontWeight = FontWeight.Bold
                                                 )
@@ -8645,15 +8648,15 @@ fun LeaveRequestsManagerScreen(viewModel: OnSiteViewModel, user: Employee) {
                                             ) {
                                                 Column(modifier = Modifier.padding(10.dp)) {
                                                     Text(
-                                                        text = "${req.status} by: ${req.respondedBy}",
+                                                        text = "${req.status} by: ${req.manager_uuid}",
                                                         style = MaterialTheme.typography.labelSmall,
                                                         fontWeight = FontWeight.Bold,
                                                         color = if (req.status == "Accepted") Color(0xFF33691E) else Color(0xFFB71C1C)
                                                     )
-                                                    if (req.responseComment.isNotEmpty()) {
+                                                    if (req.comment.isNotEmpty()) {
                                                         Spacer(modifier = Modifier.height(2.dp))
                                                         Text(
-                                                            text = "Remarks: \"${req.responseComment}\"",
+                                                            text = "Remarks: \"${req.comment}\"",
                                                             style = MaterialTheme.typography.bodySmall,
                                                             fontStyle = FontStyle.Italic,
                                                             color = MaterialTheme.colorScheme.onSurfaceVariant

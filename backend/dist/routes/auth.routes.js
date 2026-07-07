@@ -40,4 +40,7 @@ router.post('/2fa/login', [
     (0, express_validator_1.body)('password').notEmpty().withMessage('Password is required'),
     (0, express_validator_1.body)('token').notEmpty().withMessage('Token is required')
 ], authController.verify2FALogin);
+router.post('/2fa/disable', [
+    (0, express_validator_1.body)('email').isEmail().withMessage('Valid email is required')
+], authController.disable2FA);
 exports.default = router;

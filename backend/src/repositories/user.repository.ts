@@ -12,11 +12,11 @@ export class UserRepository {
     return data;
   }
 
-  async getUserByAuthId(authId: string) {
+  async getUserByUuid(uuid: string) {
     const { data, error } = await supabase
       .from('users')
       .select('*')
-      .eq('uuid', authId)
+      .eq('uuid', uuid)
       .single();
 
     if (error && error.code !== 'PGRST116') throw error;
@@ -45,13 +45,13 @@ export class UserRepository {
     return data;
   }
 
-  async update2FA(authId: string, secret: string | null, isEnabled: boolean) {
+  async update2FA(uuid: string, isEnabled: boolean) {
     const { error } = await supabase
       .from('users')
       .update({
         is_mfa_enabled: isEnabled
       })
-      .eq('uuid', authId);
+      .eq('uuid', uuid);
 
     if (error) throw error;
   }

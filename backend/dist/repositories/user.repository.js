@@ -13,14 +13,14 @@ class UserRepository {
             throw error;
         return data;
     }
-    async getUserByAuthId(authId) {
+    async getUserByUuid(uuid) {
         const { data, error } = await supabase_1.supabase
             .from('users')
             .select('*')
-            .eq('auth_id', authId)
+            .eq('uuid', uuid)
             .single();
         if (error && error.code !== 'PGRST116')
-            throw error; // PGRST116 is not found
+            throw error;
         return data;
     }
     async getUserByEmail(email) {
@@ -35,7 +35,7 @@ class UserRepository {
     }
     async createDetailedProfile(profileData) {
         const { data, error } = await supabase_1.supabase
-            .from('detailed_profiles')
+            .from('user_details')
             .insert([profileData])
             .select()
             .single();
@@ -43,14 +43,13 @@ class UserRepository {
             throw error;
         return data;
     }
-    async update2FA(authId, secret, isEnabled) {
+    async update2FA(uuid, isEnabled) {
         const { error } = await supabase_1.supabase
             .from('users')
             .update({
-            totp_secret: secret,
-            is_2fa_enabled: isEnabled
+            is_mfa_enabled: isEnabled
         })
-            .eq('auth_id', authId);
+            .eq('uuid', uuid);
         if (error)
             throw error;
     }

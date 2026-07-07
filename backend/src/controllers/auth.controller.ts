@@ -14,8 +14,7 @@ export class AuthController {
       }
 
       const user = await this.authService.registerUser(req.body);
-      const mappedUser = { ...user, name: user.full_name };
-      res.status(201).json({ message: 'User registered successfully', user: mappedUser });
+      res.status(201).json({ message: 'User registered successfully', user });
     } catch (error: any) {
       res.status(400).json({ error: error.message });
     }
@@ -30,9 +29,6 @@ export class AuthController {
       }
 
       const data = await this.authService.loginUser(req.body);
-      if (data.user) {
-        data.user = { ...data.user, name: data.user.full_name };
-      }
       res.status(200).json(data);
     } catch (error: any) {
       if (error.message === 'Invalid Credentials') {
@@ -125,9 +121,6 @@ export class AuthController {
         return;
       }
       const data = await this.authService.verify2FALogin(email, password, token);
-      if (data.user) {
-        data.user = { ...data.user, name: data.user.full_name };
-      }
       res.status(200).json(data);
     } catch (error: any) {
       if (error.message === 'Invalid 2FA code') {

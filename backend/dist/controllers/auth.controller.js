@@ -13,8 +13,7 @@ class AuthController {
                 return;
             }
             const user = await this.authService.registerUser(req.body);
-            const mappedUser = { ...user, name: user.full_name };
-            res.status(201).json({ message: 'User registered successfully', user: mappedUser });
+            res.status(201).json({ message: 'User registered successfully', user });
         }
         catch (error) {
             res.status(400).json({ error: error.message });
@@ -28,9 +27,6 @@ class AuthController {
                 return;
             }
             const data = await this.authService.loginUser(req.body);
-            if (data.user) {
-                data.user = { ...data.user, name: data.user.full_name };
-            }
             res.status(200).json(data);
         }
         catch (error) {
@@ -120,9 +116,6 @@ class AuthController {
                 return;
             }
             const data = await this.authService.verify2FALogin(email, password, token);
-            if (data.user) {
-                data.user = { ...data.user, name: data.user.full_name };
-            }
             res.status(200).json(data);
         }
         catch (error) {
@@ -130,6 +123,20 @@ class AuthController {
                 res.status(401).json({ error: 'Invalid Google Authenticator code' });
                 return;
             }
+            res.status(400).json({ error: error.message });
+        }
+    };
+    disable2FA = async (req, res) => {
+        try {
+            const { email } = req.body;
+            if (!email) {
+                res.status(400).json({ error: 'Email is required' });
+                return;
+            }
+            const data = await this.authService.disable2FA(email);
+            res.status(200).json(data);
+        }
+        catch (error) {
             res.status(400).json({ error: error.message });
         }
     };
