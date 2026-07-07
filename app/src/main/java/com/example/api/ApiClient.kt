@@ -61,10 +61,20 @@ interface AuthApiService {
 
     @POST("api/auth/send-otp")
     suspend fun sendOtp(@Body request: SendOtpRequest): SendOtpResponse
+
+    @POST("api/auth/change-password")
+    suspend fun changePassword(@Body request: ChangePasswordRequest): ChangePasswordResponse
 }
 
 data class SendOtpRequest(val email: String)
 data class SendOtpResponse(val message: String)
+
+data class ChangePasswordRequest(
+    val email: String,
+    val currentPassword: String,
+    val newPassword: String
+)
+data class ChangePasswordResponse(val message: String)
 
 // Retrofit Client
 object ApiClient {

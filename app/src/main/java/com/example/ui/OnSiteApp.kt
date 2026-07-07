@@ -94,9 +94,11 @@ fun OnSiteApp(viewModel: OnSiteViewModel = viewModel()) {
         listOf(Icons.Default.LocationOn, Icons.Default.Checklist, Icons.Default.Chat, Icons.Default.Forum, Icons.Default.EventNote, Icons.Default.Person)
     }
 
-    LaunchedEffect(currentUser) {
-        selectedTab = 0
-        landingMode = null
+    LaunchedEffect(currentUser?.id) {
+        if (currentUser != null) {
+            selectedTab = 0
+            landingMode = null
+        }
     }
 
     BackHandler(enabled = true) {
@@ -349,27 +351,24 @@ fun OnSiteApp(viewModel: OnSiteViewModel = viewModel()) {
                         }
                     },
                     actions = {
-                        // Sync Status Label & Control
+                        val isOfflineMode by viewModel.isOfflineMode.collectAsStateWithLifecycle()
+                        
+                        // Offline Mode Switch
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier.padding(end = 8.dp)
                         ) {
                             Text(
-                                text = syncStatus,
+                                text = "Offline Mode",
                                 style = MaterialTheme.typography.bodySmall,
-                                modifier = Modifier.padding(end = 4.dp),
-                                color = if (syncStatus == "Synced") Color(0xFF4CAF50) else Color(0xFFFF9800)
+                                modifier = Modifier.padding(end = 6.dp),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
-                            IconButton(
-                                onClick = { viewModel.triggerSync() },
-                                modifier = Modifier.testTag("sync_data_button")
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Sync,
-                                    contentDescription = "Manual Database Sync",
-                                    tint = if (syncStatus == "Synced") Color(0xFF4CAF50) else Color(0xFFFF9800)
-                                )
-                            }
+                            Switch(
+                                checked = isOfflineMode,
+                                onCheckedChange = { viewModel.setOfflineMode(it) },
+                                modifier = Modifier.testTag("offline_toggle")
+                            )
                         }
 
                         if (currentUser != null) {
@@ -824,8 +823,8 @@ fun LoginSelectionScreen(
             OutlinedTextField(
                 value = loginUserId,
                 onValueChange = { loginUserId = it },
-                label = { Text("Enter Your User ID or Custom Username") },
-                placeholder = { Text("e.g. CA-AG-12 or your_username") },
+                label = { Text("Enter your registered email for login") },
+                placeholder = { Text("e.g. employee@example.com") },
                 leadingIcon = { Icon(Icons.Default.Badge, contentDescription = null) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth().testTag("login_username_input")
@@ -1326,80 +1325,6 @@ fun MainDashboardContainer(
         maxWidth = 960.dp,
         contentAlignment = Alignment.TopCenter
     ) {
-        Column(modifier = Modifier.fillMaxSize()) {
-            // Active Profile Header Ribbon
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 6.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f)
-            ),
-            shape = RoundedCornerShape(8.dp)
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = if (isManager) Icons.Default.AdminPanelSettings else Icons.Default.Badge,
-                        contentDescription = "Identity Symbol",
-                        tint = if (isManager) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondary,
-                        modifier = Modifier.padding(end = 8.dp)
-                    )
-                    Column {
-                        Text(
-                            text = currentUser.name,
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            modifier = Modifier.padding(vertical = 1.dp)
-                        ) {
-                            if (!isManager) {
-                                DesignationBadge(empId = currentUser.id)
-                                Text(
-                                    text = "• ID: ${currentUser.id}",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            } else {
-                                Text(
-                                    text = "Partner • ID: ${currentUser.id}",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-                    }
-                }
-
-                // Offline simulated state switch
-                val isOfflineMode by viewModel.isOfflineMode.collectAsStateWithLifecycle()
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = "Offline Mode",
-                        style = MaterialTheme.typography.bodySmall,
-                        modifier = Modifier.padding(end = 6.dp)
-                    )
-                    Switch(
-                        checked = isOfflineMode,
-                        onCheckedChange = { viewModel.setOfflineMode(it) },
-                        modifier = Modifier.testTag("offline_toggle")
-                    )
-                }
-            }
-        }
-
-        // Tabs removed as requested. Navigation is handled strictly via the Sidebar / Navigation Drawer.
-        Spacer(modifier = Modifier.height(4.dp))
-
         // Tab views container
         Box(
             modifier = Modifier
@@ -6579,11 +6504,6 @@ fun MyProfileScreen(viewModel: OnSiteViewModel, user: Employee) {
                     } else {
                         DesignationBadge(empId = user.id)
                     }
-                    Text(
-                        text = "• ID: ${user.id}",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
-                    )
                 }
             }
         }
@@ -6867,29 +6787,17 @@ fun MyProfileScreen(viewModel: OnSiteViewModel, user: Employee) {
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column {
-                        Text(
-                            text = "Secure Passcode",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Text(
-                            text = "••••",
-                            style = MaterialTheme.typography.bodyLarge,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
                     Button(
                         onClick = { showChangePasswordDialog = true },
                         colors = ButtonDefaults.buttonColors(
                             containerColor = MaterialTheme.colorScheme.primaryContainer,
                             contentColor = MaterialTheme.colorScheme.onPrimaryContainer
                         ),
-                        modifier = Modifier.testTag("change_password_option_btn")
+                        modifier = Modifier.testTag("change_password_option_btn").fillMaxWidth()
                     ) {
                         Icon(Icons.Default.VpnKey, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("Change Passcode", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                        Text("Change Password", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -6990,164 +6898,7 @@ fun MyProfileScreen(viewModel: OnSiteViewModel, user: Employee) {
             }
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
 
-        // CLOUD BACKUP & DISASTER RECOVERY CARD
-        ProfileSectionCard(title = "Cloud Sync & Disaster Recovery", icon = Icons.Default.Cloud) {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(
-                    text = "Enterprise fallback storage backup using Google Cloud Firestore",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
-                )
-
-                // Enable/Disable switch row
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "Firebase Firestore Integration",
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Text(
-                            text = if (isFirestoreEnabledState) "Active (Dual-sync redundant backup)" else "Inactive (KVDB fallback only)",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    Switch(
-                        checked = isFirestoreEnabledState,
-                        onCheckedChange = { viewModel.setFirestoreEnabled(it) },
-                        modifier = Modifier.testTag("firestore_enable_switch")
-                    )
-                }
-
-                if (isFirestoreEnabledState) {
-                    Divider(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-
-                    // Project ID configuration field
-                    var tempProjectId by remember(firestoreProjectIdState) { mutableStateOf(firestoreProjectIdState) }
-                    
-                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text(
-                            text = "Firebase Project ID",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        OutlinedTextField(
-                            value = tempProjectId,
-                            onValueChange = { 
-                                tempProjectId = it
-                                viewModel.setFirestoreProjectId(it)
-                            },
-                            label = { Text("Project ID") },
-                            singleLine = true,
-                            shape = RoundedCornerShape(10.dp),
-                            modifier = Modifier.fillMaxWidth().testTag("firestore_project_id_input"),
-                            textStyle = MaterialTheme.typography.bodyMedium,
-                            trailingIcon = {
-                                if (tempProjectId != firestoreProjectIdState) {
-                                    Icon(
-                                        Icons.Default.Sync,
-                                        contentDescription = "Saving changes...",
-                                        tint = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                } else {
-                                    Icon(
-                                        Icons.Default.Cloud,
-                                        contentDescription = "Connected",
-                                        tint = MaterialTheme.colorScheme.secondary,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                }
-                            }
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(4.dp))
-
-                    // Status indicators
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column {
-                            Text(
-                                text = "Firestore Sync Status",
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.SemiBold,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Text(
-                                text = when (firestoreSyncStatusState) {
-                                    "Synced" -> "Connected & Synced"
-                                    "Syncing..." -> "Synchronizing..."
-                                    "Failed" -> "Sync Failed (Verify Project ID)"
-                                    else -> firestoreSyncStatusState
-                                },
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = when (firestoreSyncStatusState) {
-                                    "Synced" -> Color(0xFF00796B)
-                                    "Syncing..." -> MaterialTheme.colorScheme.primary
-                                    "Failed" -> MaterialTheme.colorScheme.error
-                                    else -> MaterialTheme.colorScheme.onSurfaceVariant
-                                }
-                            )
-                        }
-
-                        Column(horizontalAlignment = Alignment.End) {
-                            Text(
-                                text = "Last Backup",
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.SemiBold,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Text(
-                                text = if (lastFirestoreSyncTimeState > 0) {
-                                    val sdf = java.text.SimpleDateFormat("hh:mm:ss a", java.util.Locale.getDefault())
-                                    sdf.format(java.util.Date(lastFirestoreSyncTimeState))
-                                } else {
-                                    "Never Backed Up"
-                                },
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(4.dp))
-
-                    // Backup Now button
-                    Button(
-                        onClick = { viewModel.triggerSync() },
-                        modifier = Modifier.fillMaxWidth().height(42.dp).testTag("firestore_backup_now_btn"),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.primaryContainer,
-                            contentColor = MaterialTheme.colorScheme.onPrimaryContainer
-                        ),
-                        shape = RoundedCornerShape(10.dp)
-                    ) {
-                        Icon(Icons.Default.Sync, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "Run Redundant Backup & Sync",
-                            style = MaterialTheme.typography.labelLarge,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
     }
 
     if (showPhotoUpload) {
@@ -7211,8 +6962,10 @@ fun ChangePasswordDialog(
     var errorMsg by remember { mutableStateOf("") }
     val context = LocalContext.current
 
+    var isChanging by remember { mutableStateOf(false) }
+
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { if (!isChanging) onDismiss() },
         icon = {
             Icon(
                 imageVector = Icons.Default.Lock,
@@ -7223,7 +6976,7 @@ fun ChangePasswordDialog(
         },
         title = {
             Text(
-                text = "Change Secure Passcode",
+                text = "Change Password",
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
                 textAlign = TextAlign.Center,
@@ -7246,7 +6999,7 @@ fun ChangePasswordDialog(
                 // Current Password Field
                 OutlinedTextField(
                     value = currentPasswordInput,
-                    onValueChange = { currentPasswordInput = it },
+                    onValueChange = { currentPasswordInput = it; errorMsg = "" },
                     label = { Text("Current Passcode") },
                     placeholder = { Text("Enter current passcode") },
                     leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) },
@@ -7261,13 +7014,14 @@ fun ChangePasswordDialog(
                     visualTransformation = if (isCurrentPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                     singleLine = true,
+                    enabled = !isChanging,
                     modifier = Modifier.fillMaxWidth().testTag("change_password_current")
                 )
 
                 // New Password Field
                 OutlinedTextField(
                     value = newPasswordInput,
-                    onValueChange = { newPasswordInput = it },
+                    onValueChange = { newPasswordInput = it; errorMsg = "" },
                     label = { Text("New Passcode (min 4 chars)") },
                     placeholder = { Text("Enter new passcode") },
                     leadingIcon = { Icon(Icons.Default.VpnKey, contentDescription = null) },
@@ -7282,13 +7036,14 @@ fun ChangePasswordDialog(
                     visualTransformation = if (isNewPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                     singleLine = true,
+                    enabled = !isChanging,
                     modifier = Modifier.fillMaxWidth().testTag("change_password_new")
                 )
 
                 // Confirm Password Field
                 OutlinedTextField(
                     value = confirmPasswordInput,
-                    onValueChange = { confirmPasswordInput = it },
+                    onValueChange = { confirmPasswordInput = it; errorMsg = "" },
                     label = { Text("Confirm New Passcode") },
                     placeholder = { Text("Re-enter new passcode") },
                     leadingIcon = { Icon(Icons.Default.CheckCircle, contentDescription = null) },
@@ -7303,6 +7058,7 @@ fun ChangePasswordDialog(
                     visualTransformation = if (isConfirmPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                     singleLine = true,
+                    enabled = !isChanging,
                     modifier = Modifier.fillMaxWidth().testTag("change_password_confirm")
                 )
 
@@ -7321,8 +7077,8 @@ fun ChangePasswordDialog(
             Button(
                 onClick = {
                     when {
-                        currentPasswordInput != user.password -> {
-                            errorMsg = "Current passcode is incorrect."
+                        currentPasswordInput.isEmpty() -> {
+                            errorMsg = "Current passcode is required."
                         }
                         newPasswordInput.length < 4 -> {
                             errorMsg = "New passcode must be at least 4 characters long."
@@ -7331,26 +7087,39 @@ fun ChangePasswordDialog(
                             errorMsg = "Confirm passcode does not match the new passcode."
                         }
                         else -> {
-                            viewModel.updateEmployeeDetails(
-                                employeeId = user.id,
-                                name = user.name,
+                            isChanging = true
+                            viewModel.changePassword(
                                 email = user.email,
-                                department = user.department,
-                                password = newPasswordInput
-                            )
-                            android.widget.Toast.makeText(context, "Passcode updated successfully!", android.widget.Toast.LENGTH_LONG).show()
-                            onDismiss()
+                                currentPass = currentPasswordInput,
+                                newPass = newPasswordInput
+                            ) { err, success ->
+                                isChanging = false
+                                if (success) {
+                                    android.widget.Toast.makeText(context, "Passcode updated successfully!", android.widget.Toast.LENGTH_LONG).show()
+                                    onDismiss()
+                                } else {
+                                    errorMsg = err ?: "Failed to update passcode."
+                                }
+                            }
                         }
                     }
                 },
+                enabled = !isChanging,
                 modifier = Modifier.testTag("change_password_submit_btn")
             ) {
-                Text("Update Passcode")
+                if (isChanging) {
+                    CircularProgressIndicator(modifier = Modifier.size(16.dp), color = MaterialTheme.colorScheme.onPrimary, strokeWidth = 2.dp)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Updating...")
+                } else {
+                    Text("Update Passcode")
+                }
             }
         },
         dismissButton = {
             TextButton(
                 onClick = onDismiss,
+                enabled = !isChanging,
                 modifier = Modifier.testTag("change_password_cancel_btn")
             ) {
                 Text("Cancel")
@@ -7570,8 +7339,8 @@ fun LeaveRequestEmployeeScreen(viewModel: OnSiteViewModel, user: Employee) {
     var selectedSection by remember { mutableStateOf(0) } // 0 = Apply, 1 = Previous Leaves
 
     var reason by remember { mutableStateOf("") }
-    var startDate by remember { mutableStateOf("2026-07-04") }
-    var endDate by remember { mutableStateOf("2026-07-04") }
+    var startDate by remember { mutableStateOf("") }
+    var endDate by remember { mutableStateOf("") }
     var selectedCaIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     var applyToAll by remember { mutableStateOf(true) }
     var errorMessage by remember { mutableStateOf("") }
@@ -7758,8 +7527,8 @@ fun LeaveRequestEmployeeScreen(viewModel: OnSiteViewModel, user: Employee) {
 
                         Button(
                             onClick = {
-                                if (reason.isBlank()) {
-                                    errorMessage = "Please enter the reason for leave."
+                                if (reason.isBlank() || startDate.isBlank() || endDate.isBlank()) {
+                                    errorMessage = "Please enter the start date, end date, and reason for leave."
                                 } else if (!applyToAll && selectedCaIds.isEmpty()) {
                                     errorMessage = "Please select at least one CA or choose All CAs."
                                 } else {
@@ -7773,6 +7542,8 @@ fun LeaveRequestEmployeeScreen(viewModel: OnSiteViewModel, user: Employee) {
                                         recipientNames = finalNames
                                     )
                                     reason = ""
+                                    startDate = ""
+                                    endDate = ""
                                     selectedCaIds = emptySet()
                                     applyToAll = true
                                     errorMessage = ""
@@ -7780,6 +7551,7 @@ fun LeaveRequestEmployeeScreen(viewModel: OnSiteViewModel, user: Employee) {
                                     android.widget.Toast.makeText(context, "Leave Application Submitted successfully!", android.widget.Toast.LENGTH_LONG).show()
                                 }
                             },
+                            enabled = reason.isNotBlank() && startDate.isNotBlank() && endDate.isNotBlank(),
                             modifier = Modifier.fillMaxWidth().testTag("submit_leave_button")
                         ) {
                             Icon(Icons.Default.Send, contentDescription = null)

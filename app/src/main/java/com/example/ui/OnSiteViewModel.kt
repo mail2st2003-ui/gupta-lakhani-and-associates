@@ -1349,9 +1349,9 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
                 onResult(null, response.user)
             } catch (e: retrofit2.HttpException) {
                 if (e.code() == 401) {
-                    onResult("Incorrect password or email.", null)
+                    onResult("Invalid credential", null)
                 } else {
-                    onResult("Login failed: ${e.message()}", null)
+                    onResult("Invalid credential", null)
                 }
             } catch (e: Exception) {
                 onResult("Network error or server unavailable.", null)
@@ -1456,6 +1456,31 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
                     _currentUser.value = updated
                     _isManager.value = (updated.role == "Manager")
                 }
+            }
+        }
+    }
+
+    fun changePassword(email: String, currentPass: String, newPass: String, onResult: (String?, Boolean) -> Unit) {
+        viewModelScope.launch {
+            try {
+                com.example.api.ApiClient.authService.changePassword(
+                    com.example.api.ChangePasswordRequest(email = email, currentPassword = currentPass, newPassword = newPass)
+                )
+                // Also update local db for offline cache matching
+                val emp = _currentUser.value
+                if (emp != null) {
+                    updateEmployeeDetails(emp.id, emp.name, emp.email, emp.department, newPass)
+                }
+                onResult(null, true)
+            } catch (e: retrofit2.HttpException) {
+                if (e.code() == 401 || e.code() == 400) {
+                    val errorBody = e.response()?.errorBody()?.string() ?: "Invalid current password"
+                    onResult(if (errorBody.contains("Invalid current password")) "Current password is incorrect." else "Password change failed.", false)
+                } else {
+                    onResult("Server error: ${e.code()}", false)
+                }
+            } catch (e: Exception) {
+                onResult("Network error or server unavailable.", false)
             }
         }
     }

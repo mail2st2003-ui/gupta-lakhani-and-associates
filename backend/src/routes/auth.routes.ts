@@ -21,4 +21,10 @@ router.post('/send-otp', [
   body('email').isEmail().withMessage('Valid email is required')
 ], authController.sendOtp);
 
+router.post('/change-password', [
+  body('email').isEmail().withMessage('Valid email is required'),
+  body('currentPassword').notEmpty().withMessage('Current password is required'),
+  body('newPassword').isLength({ min: 4 }).withMessage('New password must be at least 4 characters')
+], authController.changePassword);
+
 export default router;

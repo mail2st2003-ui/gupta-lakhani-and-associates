@@ -54,8 +54,8 @@ export class AuthService {
 
     if (authError) {
       if (authError.message.includes('already registered') || authError.message.includes('already exists')) {
-        const { data: listData } = await supabase.auth.admin.listUsers();
-        const existingAuth = listData?.users.find(u => u.email === email);
+        const { data: listData } = await supabase.auth.admin.listUsers({ page: 1, perPage: 10000 });
+        const existingAuth = listData?.users.find(u => u.email?.toLowerCase() === normalizedEmail);
         if (existingAuth) {
            authUserId = existingAuth.id;
            await supabase.auth.admin.updateUserById(authUserId, { password, user_metadata: { full_name, role } });
@@ -159,5 +159,30 @@ export class AuthService {
       console.error('Brevo API Error:', error);
       throw new Error('Failed to send OTP email');
     }
+  }
+
+  async changePassword(data: any) {
+    const { email, currentPassword, newPassword } = data;
+
+    // Verify current password
+    const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+      email,
+      password: currentPassword
+    });
+
+    if (authError || !authData.user) {
+      throw new Error('Invalid current password');
+    }
+
+    // Update password using Admin API
+    const { error: updateError } = await supabase.auth.admin.updateUserById(authData.user.id, {
+      password: newPassword
+    });
+
+    if (updateError) {
+      throw new Error('Failed to update password');
+    }
+
+    return { message: 'Password updated successfully' };
   }
 }
