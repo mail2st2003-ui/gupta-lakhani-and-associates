@@ -34,7 +34,16 @@ data class RegisterRequest(
     val role: String,
     val department: String,
     val custom_id: String?,
-    val otp: String
+    val otp: String,
+    val age: Int?,
+    val dob: String?,
+    val fathers_name: String?,
+    val mothers_name: String?,
+    val address: String?,
+    val phone: String?,
+    val emergency_contact: String?,
+    val doj: String?,
+    val blood_group: String?
 )
 
 data class RegisterResponse(
@@ -59,8 +68,8 @@ data class SendOtpResponse(val message: String)
 
 // Retrofit Client
 object ApiClient {
-    // Using computer's Wi-Fi IP for physical mobile testing
-    private const val BASE_URL = "http://10.227.124.209:8000/"
+    // Using the live backend deployed on Render
+    private const val BASE_URL = "https://gupta-lakhani-and-associates.onrender.com/"
 
     private val logging = HttpLoggingInterceptor().apply {
         setLevel(HttpLoggingInterceptor.Level.BODY)

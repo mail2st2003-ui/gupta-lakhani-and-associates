@@ -33,4 +33,15 @@ export class UserRepository {
     if (error && error.code !== 'PGRST116') throw error;
     return data;
   }
+
+  async createDetailedProfile(profileData: any) {
+    const { data, error } = await supabase
+      .from('detailed_profiles')
+      .insert([profileData])
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  }
 }

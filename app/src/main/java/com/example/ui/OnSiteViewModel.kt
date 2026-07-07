@@ -1286,6 +1286,15 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
         role: String = "Employee",
         customId: String? = null,
         otp: String,
+        age: Int? = null,
+        dob: String? = null,
+        fathersName: String? = null,
+        mothersName: String? = null,
+        address: String? = null,
+        phone: String? = null,
+        emergencyContact: String? = null,
+        doj: String? = null,
+        bloodGroup: String? = null,
         onSuccess: (Employee) -> Unit,
         onError: (String) -> Unit = {}
     ) {
@@ -1299,7 +1308,16 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
                         role = role,
                         department = department,
                         custom_id = customId,
-                        otp = otp
+                        otp = otp,
+                        age = age,
+                        dob = dob,
+                        fathers_name = fathersName,
+                        mothers_name = mothersName,
+                        address = address,
+                        phone = phone,
+                        emergency_contact = emergencyContact,
+                        doj = doj,
+                        blood_group = bloodGroup
                     )
                 )
                 repository.insertEmployees(listOf(response.user))

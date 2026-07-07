@@ -14,7 +14,10 @@ export class AuthService {
   private userRepository = new UserRepository();
 
   async registerUser(data: any) {
-    const { email, password, full_name, role, department, custom_id, otp } = data;
+    const { 
+      email, password, full_name, role, department, custom_id, otp,
+      age, dob, fathers_name, mothers_name, address, phone, emergency_contact, doj, blood_group
+    } = data;
 
     const normalizedEmail = email.trim().toLowerCase();
 
@@ -41,6 +44,7 @@ export class AuthService {
     }
 
     // 1. Create user in Supabase Auth
+    let authUserId;
     const { data: authData, error: authError } = await supabase.auth.admin.createUser({
       email,
       password,
@@ -48,18 +52,52 @@ export class AuthService {
       user_metadata: { full_name, role }
     });
 
-    if (authError) throw new Error(authError.message);
-    if (!authData.user) throw new Error('User creation failed');
+    if (authError) {
+      if (authError.message.includes('already registered') || authError.message.includes('already exists')) {
+        const { data: listData } = await supabase.auth.admin.listUsers();
+        const existingAuth = listData?.users.find(u => u.email === email);
+        if (existingAuth) {
+           authUserId = existingAuth.id;
+           await supabase.auth.admin.updateUserById(authUserId, { password, user_metadata: { full_name, role } });
+        } else {
+           throw new Error(authError.message);
+        }
+      } else {
+        throw new Error(authError.message);
+      }
+    } else {
+      if (!authData.user) throw new Error('User creation failed');
+      authUserId = authData.user.id;
+    }
 
     // 2. Create user record in our users table
     const newUser = await this.userRepository.createUser({
-      auth_id: authData.user.id,
+      auth_id: authUserId,
       email,
       full_name,
       role: role || 'Staff',
       department,
-      custom_id
+      custom_id,
+      phone
     });
+
+    // 3. Create detailed profile
+    try {
+      await this.userRepository.createDetailedProfile({
+        id: newUser.id,
+        age,
+        dob,
+        fathers_name,
+        mothers_name,
+        address,
+        emergency_contact,
+        doj,
+        blood_group
+      });
+    } catch (profileError) {
+      console.error('Failed to create detailed profile:', profileError);
+      // We don't fail the registration if this optional step errors out, but it's logged
+    }
 
     return newUser;
   }

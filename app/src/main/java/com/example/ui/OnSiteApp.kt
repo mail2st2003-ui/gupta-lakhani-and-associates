@@ -563,6 +563,7 @@ fun LoginSelectionScreen(
     var loginPassword by remember { mutableStateOf("") }
     var loginError by remember { mutableStateOf("") }
     var isPasswordVisible by remember { mutableStateOf(false) }
+    var isLoggingIn by remember { mutableStateOf(false) }
 
     // Signup Form State
     var regName by remember { mutableStateOf("") }
@@ -574,6 +575,7 @@ fun LoginSelectionScreen(
     var regCustomId by remember { mutableStateOf("") }
     var regError by remember { mutableStateOf("") }
     var isRegPasswordVisible by remember { mutableStateOf(false) }
+    var isRegistering by remember { mutableStateOf(false) }
 
     // Personal Details States
     var regDob by remember { mutableStateOf("") }
@@ -621,7 +623,11 @@ fun LoginSelectionScreen(
                 onClick = {
                     if (isVerifyingOtp) {
                         isVerifyingOtp = false
+                        otpError = ""
                     } else {
+                        loginError = ""
+                        regError = ""
+                        otpError = ""
                         onBack()
                     }
                 },
@@ -727,6 +733,7 @@ fun LoginSelectionScreen(
             Button(
                 onClick = {
                     otpError = ""
+                    isRegistering = true
                     viewModel.registerNewEmployee(
                         name = regName,
                         email = regEmail,
@@ -735,7 +742,17 @@ fun LoginSelectionScreen(
                         role = regRole,
                         customId = if (regCustomId.isBlank()) null else regCustomId.trim(),
                         otp = enteredRegOtp,
+                        age = regAge.toIntOrNull() ?: calculateAge(regDob),
+                        dob = regDob,
+                        fathersName = regFathersName,
+                        mothersName = regMothersName,
+                        address = regAddress,
+                        phone = regMobile,
+                        emergencyContact = regEmergencyContact,
+                        doj = regDoj,
+                        bloodGroup = regBloodGroup,
                         onSuccess = { registeredEmp ->
+                            isRegistering = false
                             val newProfile = DetailedProfile(
                                 id = registeredEmp.id,
                                 age = regAge.toIntOrNull() ?: calculateAge(regDob),
@@ -758,6 +775,7 @@ fun LoginSelectionScreen(
                             ).show()
                         },
                         onError = { err ->
+                            isRegistering = false
                             otpError = err
                         }
                     )
@@ -765,11 +783,21 @@ fun LoginSelectionScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(52.dp)
-                    .testTag("verify_otp_button")
+                    .testTag("verify_otp_button"),
+                enabled = !isRegistering
             ) {
-                Icon(Icons.Default.CheckCircle, contentDescription = null)
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("Verify & Complete Registration", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                if (isRegistering) {
+                    androidx.compose.material3.CircularProgressIndicator(
+                        modifier = Modifier.size(24.dp),
+                        color = MaterialTheme.colorScheme.onPrimary
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Registering...", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                } else {
+                    Icon(Icons.Default.CheckCircle, contentDescription = null)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Verify & Complete Registration", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                }
             }
 
         } else if (!isRegisterMode) {
@@ -841,7 +869,10 @@ fun LoginSelectionScreen(
 
             Button(
                 onClick = {
+                    loginError = ""
+                    isLoggingIn = true
                     viewModel.loginUser(loginUserId.trim(), loginPassword) { error, user ->
+                        isLoggingIn = false
                         if (error != null) {
                             loginError = error
                         } else if (user != null) {
@@ -852,11 +883,21 @@ fun LoginSelectionScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(52.dp)
-                    .testTag("login_submit_button")
+                    .testTag("login_submit_button"),
+                enabled = !isLoggingIn
             ) {
-                Icon(Icons.Default.Login, contentDescription = null)
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("Login to My Account", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                if (isLoggingIn) {
+                    androidx.compose.material3.CircularProgressIndicator(
+                        modifier = Modifier.size(24.dp),
+                        color = MaterialTheme.colorScheme.onPrimary
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Logging in...", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                } else {
+                    Icon(Icons.Default.Login, contentDescription = null)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Login to My Account", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                }
             }
 
             Spacer(modifier = Modifier.height(24.dp))
@@ -872,6 +913,8 @@ fun LoginSelectionScreen(
                     onClick = {
                         isRegisterMode = true
                         loginError = ""
+                        regError = ""
+                        otpError = ""
                     },
                     modifier = Modifier.testTag("goto_signup_button")
                 ) {
@@ -1226,6 +1269,8 @@ fun LoginSelectionScreen(
                     onClick = {
                         isRegisterMode = false
                         regError = ""
+                        loginError = ""
+                        otpError = ""
                     },
                     modifier = Modifier.testTag("goto_login_button")
                 ) {
