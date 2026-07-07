@@ -6,8 +6,8 @@ class TasksController {
     tasksService = new tasks_service_1.TasksService();
     getTasks = async (req, res) => {
         try {
-            const { employee_id } = req.query;
-            const data = await this.tasksService.getTasks(employee_id);
+            const { employee_id, include_personal } = req.query;
+            const data = await this.tasksService.getTasks(employee_id, include_personal === 'true' || include_personal === true);
             res.status(200).json(data);
         }
         catch (error) {

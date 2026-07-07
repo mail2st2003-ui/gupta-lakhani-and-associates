@@ -51,6 +51,7 @@ const apiKey = defaultClient.authentications['api-key'];
 apiKey.apiKey = process.env.BREVO_API_KEY;
 // Simple in-memory store for OTPs. In production, use Redis or DB.
 const otpStore = new Map();
+const pending2FASecrets = new Map();
 class AuthService extends base_service_1.BaseService {
     userRepository = new user_repository_1.UserRepository();
     async registerUser(data) {
@@ -140,6 +141,9 @@ class AuthService extends base_service_1.BaseService {
             designation: profileData.designation || ''
         });
     }
+    async updateProfileImage(userUuid, profileImage) {
+        return this.userRepository.updateProfileImage(userUuid, profileImage);
+    }
     async loginUser(data) {
         const { email, password } = data;
         const normalizedEmail = email.trim().toLowerCase();
@@ -212,26 +216,67 @@ class AuthService extends base_service_1.BaseService {
         return { message: 'Password reset successfully' };
     }
     async setup2FA(email) {
-        const userProfile = await this.userRepository.getUserByEmail(email);
+        const normalizedEmail = email.trim().toLowerCase();
+        const userProfile = await this.userRepository.getUserByEmail(normalizedEmail);
         if (!userProfile)
             throw new Error('User not found');
         const secret = authenticator.generateSecret();
-        await this.userRepository.update2FA(userProfile.uuid, true);
-        const otpauth = authenticator.keyuri(email, 'FirmSync', secret);
+        pending2FASecrets.set(normalizedEmail, {
+            secret,
+            expiresAt: Date.now() + 10 * 60 * 1000
+        });
+        const otpauth = authenticator.keyuri(normalizedEmail, 'FirmSync', secret);
         const qrCodeDataUrl = await qrcode_1.default.toDataURL(otpauth);
         return { secret, qrCode: qrCodeDataUrl };
     }
     async verify2FASetup(email, token) {
+        const normalizedEmail = email.trim().toLowerCase();
+        const pending = pending2FASecrets.get(normalizedEmail);
+        if (!pending || pending.expiresAt < Date.now()) {
+            pending2FASecrets.delete(normalizedEmail);
+            throw new Error('2FA setup expired. Please start again.');
+        }
+        const isValid = authenticator.check(token, pending.secret);
+        if (!isValid)
+            throw new Error('Invalid 2FA code');
+        const userProfile = await this.userRepository.getUserByEmail(normalizedEmail);
+        if (!userProfile)
+            throw new Error('User not found');
+        await this.userRepository.update2FA(userProfile.uuid, true, pending.secret);
+        pending2FASecrets.delete(normalizedEmail);
         return { success: true };
     }
     async verify2FALogin(email, password, token) {
-        throw new Error('Not implemented completely');
+        const normalizedEmail = email.trim().toLowerCase();
+        const userProfile = await this.userRepository.getUserByEmail(normalizedEmail);
+        if (!userProfile)
+            throw new Error('Invalid Credentials');
+        const isValidPassword = await bcryptjs_1.default.compare(password, userProfile.password);
+        if (!isValidPassword)
+            throw new Error('Invalid Credentials');
+        if (!userProfile.is_mfa_enabled)
+            throw new Error('2FA is not enabled');
+        if (!userProfile.mfa_secret)
+            throw new Error('2FA secret is missing. Please set up 2FA again.');
+        const isValidToken = authenticator.check(token, userProfile.mfa_secret);
+        if (!isValidToken)
+            throw new Error('Invalid 2FA code');
+        const jwtToken = jsonwebtoken_1.default.sign({ uuid: userProfile.uuid, email: userProfile.email, role: userProfile.role }, process.env.JWT_SECRET || 'fallback-secret-key', { expiresIn: '30d' });
+        return {
+            user: userProfile,
+            session: {
+                access_token: jwtToken,
+                refresh_token: jwtToken
+            }
+        };
     }
     async disable2FA(email) {
-        const userProfile = await this.userRepository.getUserByEmail(email);
+        const normalizedEmail = email.trim().toLowerCase();
+        const userProfile = await this.userRepository.getUserByEmail(normalizedEmail);
         if (!userProfile)
             throw new Error('User not found');
-        await this.userRepository.update2FA(userProfile.uuid, false);
+        pending2FASecrets.delete(normalizedEmail);
+        await this.userRepository.update2FA(userProfile.uuid, false, null);
         return { success: true, message: '2FA disabled successfully' };
     }
 }

@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto';
 import { supabase } from '../config/supabase';
 
 export class UserRepository {
@@ -56,12 +57,30 @@ export class UserRepository {
     return data;
   }
 
-  async update2FA(uuid: string, isEnabled: boolean) {
+  async updateProfileImage(userUuid: string, profileImage: string | null) {
+    const { data, error } = await supabase
+      .from('user_details')
+      .upsert([{
+        uuid: randomUUID(),
+        user_uuid: userUuid,
+        profile_image: profileImage
+      }], { onConflict: 'user_uuid' })
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  }
+
+  async update2FA(uuid: string, isEnabled: boolean, secret: string | null = null) {
+    const updateData: any = { is_mfa_enabled: isEnabled };
+    if (isEnabled || secret === null) {
+      updateData.mfa_secret = secret;
+    }
+
     const { error } = await supabase
       .from('users')
-      .update({
-        is_mfa_enabled: isEnabled
-      })
+      .update(updateData)
       .eq('uuid', uuid);
 
     if (error) throw error;

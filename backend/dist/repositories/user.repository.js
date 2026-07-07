@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.UserRepository = void 0;
+const crypto_1 = require("crypto");
 const supabase_1 = require("../config/supabase");
 class UserRepository {
     async createUser(userData) {
@@ -53,12 +54,28 @@ class UserRepository {
             throw error;
         return data;
     }
-    async update2FA(uuid, isEnabled) {
+    async updateProfileImage(userUuid, profileImage) {
+        const { data, error } = await supabase_1.supabase
+            .from('user_details')
+            .upsert([{
+                uuid: (0, crypto_1.randomUUID)(),
+                user_uuid: userUuid,
+                profile_image: profileImage
+            }], { onConflict: 'user_uuid' })
+            .select()
+            .single();
+        if (error)
+            throw error;
+        return data;
+    }
+    async update2FA(uuid, isEnabled, secret = null) {
+        const updateData = { is_mfa_enabled: isEnabled };
+        if (isEnabled || secret === null) {
+            updateData.mfa_secret = secret;
+        }
         const { error } = await supabase_1.supabase
             .from('users')
-            .update({
-            is_mfa_enabled: isEnabled
-        })
+            .update(updateData)
             .eq('uuid', uuid);
         if (error)
             throw error;

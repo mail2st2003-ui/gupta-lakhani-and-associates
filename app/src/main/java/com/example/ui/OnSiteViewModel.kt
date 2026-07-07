@@ -1305,7 +1305,7 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
                         father_name = fathersName,
                         mother_name = mothersName,
                         permanent_address = address,
-                        current_address = address,
+                        current_address = emergencyContact,
                         contact = phone,
                         emergency_contact = emergencyContact,
                         doj = doj,
@@ -1367,6 +1367,19 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch {
             repository.insertEmployees(listOf(user))
             selectUserSession(user)
+            fetchRemoteTasksForUser(user.uuid)
+        }
+    }
+
+    private suspend fun fetchRemoteTasksForUser(userUuid: String) {
+        if (_isOfflineMode.value) return
+        try {
+            val remoteTasks = com.example.api.ApiClient.tasksService.getTasks(userUuid, includePersonal = true)
+            remoteTasks.forEach { task ->
+                repository.insertTodoItem(task.copy(isSynced = true))
+            }
+        } catch (e: Exception) {
+            Log.e("OnSiteViewModel", "Failed to fetch remote tasks", e)
         }
     }
 
@@ -1448,7 +1461,18 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
                     profile_image = photoBase64,
                     designation = emp.designation ?: ""
                 )
-                saveUserDetails(updatedProfile)
+                repository.saveUserDetails(updatedProfile)
+                if (!_isOfflineMode.value) {
+                    try {
+                        com.example.api.ApiClient.authService.updateProfileImage(
+                            employeeId,
+                            com.example.api.ProfileImageRequest(photoBase64)
+                        )
+                    } catch (e: Exception) {
+                        Log.e("OnSiteViewModel", "Failed to sync profile photo", e)
+                        _syncStatus.value = "Failed to sync profile photo. Saved offline."
+                    }
+                }
                 if (_currentUser.value?.uuid == employeeId) {
                     _currentUser.value = updated
                 }
@@ -1492,6 +1516,15 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
                     _isManager.value = (updated.role == "Manager")
                 }
             }
+        }
+    }
+
+    fun updateCurrentUserMfaEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            val user = _currentUser.value ?: return@launch
+            val updated = user.copy(is_mfa_enabled = enabled)
+            repository.updateEmployee(updated)
+            _currentUser.value = updated
         }
     }
 

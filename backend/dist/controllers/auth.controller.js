@@ -29,6 +29,16 @@ class AuthController {
             res.status(400).json({ error: error.message });
         }
     };
+    updateProfileImage = async (req, res) => {
+        try {
+            const userUuid = String(req.params.userUuid);
+            const data = await this.authService.updateProfileImage(userUuid, req.body.profile_image ?? null);
+            res.status(200).json({ message: 'Profile image updated successfully', profile: data });
+        }
+        catch (error) {
+            res.status(400).json({ error: error.message });
+        }
+    };
     login = async (req, res) => {
         try {
             const errors = (0, express_validator_1.validationResult)(req);
@@ -115,6 +125,10 @@ class AuthController {
             res.status(200).json(data);
         }
         catch (error) {
+            if (error.message === 'Invalid 2FA code') {
+                res.status(401).json({ error: 'Invalid Google Authenticator code' });
+                return;
+            }
             res.status(400).json({ error: error.message });
         }
     };

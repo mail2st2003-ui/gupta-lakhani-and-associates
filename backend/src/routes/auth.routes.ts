@@ -13,6 +13,7 @@ router.post('/register', [
 ], authController.register);
 
 router.put('/profile/:userUuid', authController.updateProfile);
+router.put('/profile/:userUuid/photo', authController.updateProfileImage);
 
 router.post('/login', [
   body('email').isEmail().withMessage('Valid email is required'),

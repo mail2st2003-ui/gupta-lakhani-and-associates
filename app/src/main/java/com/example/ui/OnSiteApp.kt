@@ -800,7 +800,7 @@ fun LoginSelectionScreen(
                                 official_email = regEmail.trim(),
                                 personal_email = regEmail.trim(),
                                 permanent_address = regAddress.trim(),
-                                current_address = regAddress.trim(),
+                                current_address = regEmergencyContact.trim(),
                                 profile_image = null,
                                 designation = regDept
                             )
@@ -2964,20 +2964,14 @@ fun TalkToScreen(viewModel: OnSiteViewModel, currentUser: Employee, isManager: B
                     color = MaterialTheme.colorScheme.primary
                 )
                 Text(
-                    text = if (isManager) "Summon staff instantly or start a secure direct chat" else "Chat with corporate partners securely",
+                    text = "Select any firm member to start a secure direct chat",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
 
-            val targetUsers = remember(employees, isManager, currentUser) {
-                if (isManager) {
-                    // Managers see all employees (non-managers)
-                    employees.filter { it.role != "Manager" && it.uuid != currentUser.uuid }
-                } else {
-                    // Employees see all partners (managers)
-                    employees.filter { it.role == "Manager" && it.uuid != currentUser.uuid }
-                }
+            val targetUsers = remember(employees, currentUser) {
+                employees.filter { it.uuid != currentUser.uuid }
             }
 
             if (targetUsers.isEmpty()) {
@@ -6691,6 +6685,7 @@ fun MyProfileScreen(viewModel: OnSiteViewModel, user: Employee) {
     val isCa = user.role == "Manager"
     var showPhotoUpload by remember { mutableStateOf(false) }
     var showChangePasswordDialog by remember { mutableStateOf(false) }
+    var is2faChecked by remember(user.is_mfa_enabled) { mutableStateOf(user.is_mfa_enabled) }
 
     // 2FA Setup States
     var showSetup2FADialog by remember { mutableStateOf(false) }
@@ -7149,11 +7144,9 @@ fun MyProfileScreen(viewModel: OnSiteViewModel, user: Employee) {
                         Spacer(modifier = Modifier.width(12.dp))
                         Text("Two-Factor Authentication", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
                     }
-                    var is2faChecked by remember(user.is_mfa_enabled) { mutableStateOf(user.is_mfa_enabled) }
                     Switch(
                         checked = is2faChecked,
                         onCheckedChange = { checked ->
-                            is2faChecked = checked
                             scope.launch {
                                 try {
                                     if (checked) {
@@ -7163,10 +7156,12 @@ fun MyProfileScreen(viewModel: OnSiteViewModel, user: Employee) {
                                         showSetup2FADialog = true
                                     } else {
                                         com.example.api.ApiClient.authService.disable2FA(com.example.api.Setup2FARequest(email = user.email))
+                                        is2faChecked = false
+                                        viewModel.updateCurrentUserMfaEnabled(false)
                                         android.widget.Toast.makeText(context, "2FA Disabled", android.widget.Toast.LENGTH_SHORT).show()
                                     }
                                 } catch (e: Exception) {
-                                    is2faChecked = !checked
+                                    is2faChecked = user.is_mfa_enabled
                                     android.widget.Toast.makeText(context, "Error updating 2FA: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
                                 }
                             }
@@ -7326,6 +7321,7 @@ fun MyProfileScreen(viewModel: OnSiteViewModel, user: Employee) {
                 setup2FASecret = ""
                 setup2FACode = ""
                 setup2FAError = ""
+                if (!user.is_mfa_enabled) is2faChecked = false
             },
             title = { Text("Setup Two-Factor Authentication") },
             text = {
@@ -7382,6 +7378,8 @@ fun MyProfileScreen(viewModel: OnSiteViewModel, user: Employee) {
                                     com.example.api.Verify2FASetupRequest(email = user.email, token = setup2FACode.trim())
                                 )
                                 if (response.success) {
+                                    is2faChecked = true
+                                    viewModel.updateCurrentUserMfaEnabled(true)
                                     showSetup2FADialog = false
                                 }
                             } catch (e: Exception) {
@@ -7408,6 +7406,7 @@ fun MyProfileScreen(viewModel: OnSiteViewModel, user: Employee) {
                         setup2FASecret = ""
                         setup2FACode = ""
                         setup2FAError = ""
+                        if (!user.is_mfa_enabled) is2faChecked = false
                     }
                 ) {
                     Text("Cancel")
@@ -8126,6 +8125,32 @@ fun LeaveRequestEmployeeScreen(viewModel: OnSiteViewModel, user: Employee) {
                 }
             }
         }
+    }
+
+    if (showCalendarForField != null) {
+        val fieldName = showCalendarForField!!
+        val currentVal = when (fieldName) {
+            "startDate" -> startDate
+            "endDate" -> endDate
+            else -> ""
+        }
+        CalendarDialog(
+            initialDate = if (currentVal.isBlank()) "2026-07-01" else currentVal,
+            format = "yyyy-MM-dd",
+            onDismissRequest = { showCalendarForField = null },
+            onDateSelected = { selectedDate ->
+                if (fieldName == "startDate") {
+                    startDate = selectedDate
+                    if (endDate.isNotBlank() && endDate <= selectedDate) {
+                        endDate = ""
+                    }
+                } else if (fieldName == "endDate") {
+                    endDate = selectedDate
+                }
+                errorMessage = ""
+                showCalendarForField = null
+            }
+        )
     }
 }
 

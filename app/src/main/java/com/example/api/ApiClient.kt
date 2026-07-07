@@ -8,8 +8,10 @@ import retrofit2.converter.moshi.MoshiConverterFactory
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import retrofit2.http.Body
+import retrofit2.http.GET
 import retrofit2.http.PUT
 import retrofit2.http.Path
+import retrofit2.http.Query
 import retrofit2.http.POST
 import java.util.concurrent.TimeUnit
 
@@ -32,6 +34,7 @@ data class Verify2FASetupRequest(val email: String, val token: String)
 data class Verify2FASetupResponse(val success: Boolean)
 data class Verify2FALoginRequest(val email: String, val password: String, val token: String)
 data class Verify2FALoginResponse(val user: Employee, val session: SessionData)
+data class ProfileImageRequest(val profile_image: String?)
 
 data class SessionData(
     val access_token: String,
@@ -76,6 +79,9 @@ interface AuthApiService {
 
     @PUT("api/auth/profile/{userUuid}")
     suspend fun updateProfile(@Path("userUuid") userUuid: String, @Body profile: com.example.data.UserDetails): Any
+
+    @PUT("api/auth/profile/{userUuid}/photo")
+    suspend fun updateProfileImage(@Path("userUuid") userUuid: String, @Body request: ProfileImageRequest): Any
 
     @POST("api/auth/send-otp")
     suspend fun sendOtp(@Body request: SendOtpRequest): SendOtpResponse
@@ -146,6 +152,12 @@ object ApiClient {
 }
 
 interface TasksApiService {
+    @GET("api/tasks")
+    suspend fun getTasks(
+        @Query("employee_id") employeeId: String,
+        @Query("include_personal") includePersonal: Boolean = true
+    ): List<com.example.data.TodoItem>
+
     @POST("api/tasks")
     suspend fun createTask(@Body task: com.example.data.TodoItem): Any
 }

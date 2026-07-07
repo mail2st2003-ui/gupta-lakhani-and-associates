@@ -30,6 +30,16 @@ export class AuthController {
     }
   };
 
+  updateProfileImage = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const userUuid = String(req.params.userUuid);
+      const data = await this.authService.updateProfileImage(userUuid, req.body.profile_image ?? null);
+      res.status(200).json({ message: 'Profile image updated successfully', profile: data });
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  };
+
   login = async (req: Request, res: Response): Promise<void> => {
     try {
       const errors = validationResult(req);
@@ -119,6 +129,10 @@ export class AuthController {
       const data = await this.authService.verify2FASetup(email, token);
       res.status(200).json(data);
     } catch (error: any) {
+      if (error.message === 'Invalid 2FA code') {
+        res.status(401).json({ error: 'Invalid Google Authenticator code' });
+        return;
+      }
       res.status(400).json({ error: error.message });
     }
   };

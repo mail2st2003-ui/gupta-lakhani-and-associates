@@ -4,7 +4,30 @@ exports.TasksService = void 0;
 const crypto_1 = require("crypto");
 const supabase_1 = require("../config/supabase");
 class TasksService {
-    async getTasks(employeeId) {
+    async getTasks(employeeId, includePersonal = false) {
+        const results = [];
+        if (includePersonal && employeeId) {
+            const { data: todos, error: todosError } = await supabase_1.supabase
+                .from('todos')
+                .select('*')
+                .eq('user_uuid', employeeId)
+                .order('timestamp', { ascending: false });
+            if (todosError)
+                throw todosError;
+            results.push(...(todos || []).map((todo) => ({
+                uuid: todo.uuid,
+                user_uuid: todo.user_uuid,
+                title: todo.title || '',
+                description: todo.description || '',
+                priority: todo.priority || 'Medium',
+                is_completed: todo.is_completed || false,
+                status: todo.status || 'Pending',
+                timestamp: todo.timestamp || Date.now(),
+                is_personal: true,
+                assigned_by: '',
+                isSynced: true
+            })));
+        }
         let query = supabase_1.supabase
             .from('tasks')
             .select('*, task_details(*)')
@@ -12,10 +35,26 @@ class TasksService {
         if (employeeId) {
             query = query.eq('assigned_to_user_uuid', employeeId);
         }
-        const { data, error } = await query;
+        const { data: assignedTasks, error } = await query;
         if (error)
             throw error;
-        return data;
+        results.push(...(assignedTasks || []).map((task) => {
+            const details = Array.isArray(task.task_details) ? task.task_details[0] : task.task_details;
+            return {
+                uuid: task.uuid,
+                user_uuid: task.assigned_to_user_uuid,
+                title: details?.title || '',
+                description: details?.description || '',
+                priority: details?.priority || 'Medium',
+                is_completed: details?.status === 'Complete',
+                status: details?.status || 'Pending',
+                timestamp: details?.created_at ? new Date(details.created_at).getTime() : Date.now(),
+                is_personal: false,
+                assigned_by: task.created_by_user_uuid || '',
+                isSynced: true
+            };
+        }));
+        return results.sort((a, b) => b.timestamp - a.timestamp);
     }
     async createTask(taskData) {
         const isPersonal = taskData.is_personal ?? taskData.isPersonal ?? true;
