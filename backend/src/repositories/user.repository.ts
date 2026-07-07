@@ -16,10 +16,10 @@ export class UserRepository {
     const { data, error } = await supabase
       .from('users')
       .select('*')
-      .eq('auth_id', authId)
+      .eq('uuid', authId)
       .single();
 
-    if (error && error.code !== 'PGRST116') throw error; // PGRST116 is not found
+    if (error && error.code !== 'PGRST116') throw error;
     return data;
   }
 
@@ -36,7 +36,7 @@ export class UserRepository {
 
   async createDetailedProfile(profileData: any) {
     const { data, error } = await supabase
-      .from('detailed_profiles')
+      .from('user_details')
       .insert([profileData])
       .select()
       .single();
@@ -49,10 +49,9 @@ export class UserRepository {
     const { error } = await supabase
       .from('users')
       .update({
-        totp_secret: secret,
-        is_2fa_enabled: isEnabled
+        is_mfa_enabled: isEnabled
       })
-      .eq('auth_id', authId);
+      .eq('uuid', authId);
 
     if (error) throw error;
   }
