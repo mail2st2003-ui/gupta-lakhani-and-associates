@@ -48,4 +48,8 @@ router.post('/2fa/login', [
   body('token').notEmpty().withMessage('Token is required')
 ], authController.verify2FALogin);
 
+router.post('/2fa/disable', [
+  body('email').isEmail().withMessage('Valid email is required')
+], authController.disable2FA);
+
 export default router;

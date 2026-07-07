@@ -137,4 +137,18 @@ export class AuthController {
       res.status(400).json({ error: error.message });
     }
   };
+
+  disable2FA = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { email } = req.body;
+      if (!email) {
+        res.status(400).json({ error: 'Email is required' });
+        return;
+      }
+      const data = await this.authService.disable2FA(email);
+      res.status(200).json(data);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  };
 }

@@ -60,10 +60,17 @@ export class AuthService {
         const { data: listData } = await supabase.auth.admin.listUsers({ page: 1, perPage: 10000 });
         const existingAuth = listData?.users.find(u => u.email?.toLowerCase() === normalizedEmail);
         if (existingAuth) {
-           authUserId = existingAuth.id;
-           await supabase.auth.admin.updateUserById(authUserId, { password, user_metadata: { full_name, role } });
+          await supabase.auth.admin.deleteUser(existingAuth.id);
+          const { data: newAuthData, error: newAuthError } = await supabase.auth.admin.createUser({
+            email,
+            password,
+            email_confirm: true,
+            user_metadata: { full_name, role }
+          });
+          if (newAuthError) throw new Error(newAuthError.message);
+          authUserId = newAuthData.user.id;
         } else {
-           throw new Error(authError.message);
+          throw new Error(authError.message);
         }
       } else {
         throw new Error(authError.message);
@@ -288,5 +295,13 @@ export class AuthService {
       user: userProfile,
       session: authData.session
     };
+  }
+
+  async disable2FA(email: string) {
+    const userProfile = await this.userRepository.getUserByEmail(email);
+    if (!userProfile) throw new Error('User not found');
+    
+    await this.userRepository.update2FA(userProfile.auth_id, null, false);
+    return { success: true, message: '2FA disabled successfully' };
   }
 }

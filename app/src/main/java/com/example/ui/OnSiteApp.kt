@@ -814,6 +814,24 @@ fun LoginSelectionScreen(
                 }
             }
 
+            Spacer(modifier = Modifier.height(8.dp))
+
+            TextButton(
+                onClick = {
+                    scope.launch {
+                        try {
+                            com.example.api.ApiClient.authService.sendOtp(com.example.api.SendOtpRequest(email = regEmail))
+                            android.widget.Toast.makeText(context, "OTP resent to $regEmail", android.widget.Toast.LENGTH_SHORT).show()
+                        } catch (e: Exception) {
+                            otpError = "Failed to resend OTP: ${e.message}"
+                        }
+                    }
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Didn't receive OTP? Resend")
+            }
+
         } else if (!isRegisterMode) {
             // ==========================================
             // LOGIN MODE
@@ -2047,7 +2065,7 @@ fun EmployeeOnSiteScreen(
                 shape = RoundedCornerShape(12.dp)
             ) {
                 Column(
-                    modifier = Modifier.padding(14.dp),
+                    modifier = Modifier.padding(14.dp).fillMaxWidth(),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Text(
@@ -7079,33 +7097,42 @@ fun MyProfileScreen(viewModel: OnSiteViewModel, user: Employee) {
                         Spacer(modifier = Modifier.width(6.dp))
                         Text("Change Password", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
                     }
-
-                    Spacer(modifier = Modifier.width(8.dp))
-
-                    Button(
-                        onClick = {
-                            // Fetch QR code
+                }
+                
+                Spacer(modifier = Modifier.height(16.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Security, contentDescription = null, modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.primary)
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text("Two-Factor Authentication", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+                    }
+                    var is2faChecked by remember(user.is_2fa_enabled) { mutableStateOf(user.is_2fa_enabled) }
+                    Switch(
+                        checked = is2faChecked,
+                        onCheckedChange = { checked ->
+                            is2faChecked = checked
                             scope.launch {
                                 try {
-                                    val response = com.example.api.ApiClient.authService.setup2FA(com.example.api.Setup2FARequest(email = user.email))
-                                    setup2FAQrCode = response.qrCode
-                                    setup2FASecret = response.secret
-                                    showSetup2FADialog = true
+                                    if (checked) {
+                                        val response = com.example.api.ApiClient.authService.setup2FA(com.example.api.Setup2FARequest(email = user.email))
+                                        setup2FAQrCode = response.qrCode
+                                        setup2FASecret = response.secret
+                                        showSetup2FADialog = true
+                                    } else {
+                                        com.example.api.ApiClient.authService.disable2FA(com.example.api.Setup2FARequest(email = user.email))
+                                        android.widget.Toast.makeText(context, "2FA Disabled", android.widget.Toast.LENGTH_SHORT).show()
+                                    }
                                 } catch (e: Exception) {
-                                    android.widget.Toast.makeText(context, "Error setting up 2FA: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
+                                    is2faChecked = !checked
+                                    android.widget.Toast.makeText(context, "Error updating 2FA: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
                                 }
                             }
-                        },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                            contentColor = MaterialTheme.colorScheme.onSecondaryContainer
-                        ),
-                        modifier = Modifier.testTag("setup_2fa_btn").weight(1f)
-                    ) {
-                        Icon(Icons.Default.Security, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Setup 2FA", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
-                    }
+                        }
+                    )
                 }
             }
 

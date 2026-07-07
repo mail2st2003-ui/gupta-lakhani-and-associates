@@ -97,7 +97,7 @@ interface AppDao {
     suspend fun insertAlert(alert: SystemAlert)
 
     @Query("UPDATE system_alerts SET isRead = 1 WHERE id = :id")
-    suspend fun markAlertAsRead(id: Int)
+    suspend fun markAlertAsRead(id: String)
 
     // Leave Requests
     @Query("SELECT * FROM leave_requests ORDER BY timestamp DESC")
@@ -135,7 +135,7 @@ interface AppDao {
 
 @Database(
     entities = [Employee::class, AttendanceLog::class, TodoItem::class, Message::class, SystemAlert::class, LeaveRequest::class, SummonAlert::class, DetailedProfile::class],
-    version = 8,
+    version = 9,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -229,7 +229,7 @@ class OnSiteRepository(private val appDao: AppDao) {
         appDao.insertAlert(alert)
     }
 
-    suspend fun markAlertAsRead(id: Int) {
+    suspend fun markAlertAsRead(id: String) {
         appDao.markAlertAsRead(id)
     }
 

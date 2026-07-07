@@ -2,6 +2,7 @@ package com.example.data
 
 import androidx.room.Entity
 import androidx.room.PrimaryKey
+import com.squareup.moshi.Json
 
 @Entity(tableName = "employees")
 data class Employee(
@@ -13,12 +14,13 @@ data class Employee(
     val status: String = "Absent", // "Present", "Absent", "Late"
     val lastCheckedIn: Long? = null,
     val password: String = "1234",
-    val profilePhoto: String? = null
+    val profilePhoto: String? = null,
+    @Json(name = "is_2fa_enabled") val is_2fa_enabled: Boolean = false
 )
 
 @Entity(tableName = "attendance_logs")
 data class AttendanceLog(
-    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    @PrimaryKey val id: String = java.util.UUID.randomUUID().toString(),
     val employeeId: String,
     val employeeName: String,
     val timestamp: Long,
@@ -64,7 +66,7 @@ data class Message(
 
 @Entity(tableName = "summons")
 data class SummonAlert(
-    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    @PrimaryKey val id: String = java.util.UUID.randomUUID().toString(),
     val partnerId: String,
     val partnerName: String,
     val staffId: String,
@@ -74,7 +76,7 @@ data class SummonAlert(
 
 @Entity(tableName = "system_alerts")
 data class SystemAlert(
-    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    @PrimaryKey val id: String = java.util.UUID.randomUUID().toString(),
     val title: String,
     val content: String,
     val timestamp: Long = System.currentTimeMillis(),

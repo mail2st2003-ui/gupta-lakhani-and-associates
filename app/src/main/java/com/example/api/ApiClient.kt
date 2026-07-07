@@ -85,6 +85,9 @@ interface AuthApiService {
 
     @POST("api/auth/2fa/login")
     suspend fun verify2FALogin(@Body request: Verify2FALoginRequest): Verify2FALoginResponse
+
+    @POST("api/auth/2fa/disable")
+    suspend fun disable2FA(@Body request: Setup2FARequest): Verify2FASetupResponse
 }
 
 data class SendOtpRequest(val email: String)
