@@ -1325,39 +1325,40 @@ fun MainDashboardContainer(
         maxWidth = 960.dp,
         contentAlignment = Alignment.TopCenter
     ) {
-        // Tab views container
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f)
-                .padding(horizontal = 16.dp)
-        ) {
-            if (isManager) {
-                when (selectedTab) {
-                    0 -> ManagerLiveDashboard(viewModel)
-                    1 -> EmployeeOnSiteScreen(viewModel, currentUser, onTabSelected)
-                    2 -> PartnerAttendanceScreen(viewModel)
-                    3 -> GroupDiscussionScreen(viewModel, currentUser, isManager = true)
-                    4 -> TalkToScreen(viewModel, currentUser, isManager = true)
-                    5 -> ManagerTasksDashboard(viewModel, currentUser)
-                    6 -> LeaveRequestsManagerScreen(viewModel, currentUser)
-                    7 -> MyProfileScreen(viewModel, currentUser)
-                    else -> ManagerLiveDashboard(viewModel)
-                }
-            } else {
-                when (selectedTab) {
-                    0 -> EmployeeOnSiteScreen(viewModel, currentUser, onTabSelected)
-                    1 -> EmployeeTasksScreen(viewModel, currentUser)
-                    2 -> TalkToScreen(viewModel, currentUser, isManager = false)
-                    3 -> GroupDiscussionScreen(viewModel, currentUser, isManager = false)
-                    4 -> LeaveRequestEmployeeScreen(viewModel, currentUser)
-                    5 -> MyProfileScreen(viewModel, currentUser)
-                    else -> EmployeeOnSiteScreen(viewModel, currentUser, onTabSelected)
+        Column(modifier = Modifier.fillMaxSize()) {
+            // Tab views container
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .padding(horizontal = 16.dp)
+            ) {
+                if (isManager) {
+                    when (selectedTab) {
+                        0 -> ManagerLiveDashboard(viewModel)
+                        1 -> EmployeeOnSiteScreen(viewModel, currentUser, onTabSelected)
+                        2 -> PartnerAttendanceScreen(viewModel)
+                        3 -> GroupDiscussionScreen(viewModel, currentUser, isManager = true)
+                        4 -> TalkToScreen(viewModel, currentUser, isManager = true)
+                        5 -> ManagerTasksDashboard(viewModel, currentUser)
+                        6 -> LeaveRequestsManagerScreen(viewModel, currentUser)
+                        7 -> MyProfileScreen(viewModel, currentUser)
+                        else -> ManagerLiveDashboard(viewModel)
+                    }
+                } else {
+                    when (selectedTab) {
+                        0 -> EmployeeOnSiteScreen(viewModel, currentUser, onTabSelected)
+                        1 -> EmployeeTasksScreen(viewModel, currentUser)
+                        2 -> TalkToScreen(viewModel, currentUser, isManager = false)
+                        3 -> GroupDiscussionScreen(viewModel, currentUser, isManager = false)
+                        4 -> LeaveRequestEmployeeScreen(viewModel, currentUser)
+                        5 -> MyProfileScreen(viewModel, currentUser)
+                        else -> EmployeeOnSiteScreen(viewModel, currentUser, onTabSelected)
+                    }
                 }
             }
         }
     }
-}
 }
 
 // -------------------------------------------------------------
