@@ -800,7 +800,8 @@ fun LoginSelectionScreen(
                                 official_email = regEmail.trim(),
                                 personal_email = regEmail.trim(),
                                 permanent_address = regAddress.trim(),
-                                current_address = regEmergencyContact.trim(),
+                                current_address = regAddress.trim(),
+                                emergency_contact = regEmergencyContact.trim(),
                                 profile_image = null,
                                 designation = regDept
                             )
@@ -6009,7 +6010,7 @@ fun EmployeeProfileDetailDialog(
                 ProfileDetailItem("Date of Joining", "")
                 ProfileDetailItem("Blood Group", details.blood_group)
                 ProfileDetailItem("Personal Phone", details.contact)
-                ProfileDetailItem("Emergency Contact", details.current_address)
+                ProfileDetailItem("Emergency Contact", details.emergency_contact)
                 ProfileDetailItem("Personal Email", details.personal_email)
                 ProfileDetailItem("Residential Address", details.permanent_address)
                 ProfileDetailItem("On-Site ID (Unmasked)", employee.uuid)
@@ -6685,7 +6686,9 @@ fun MyProfileScreen(viewModel: OnSiteViewModel, user: Employee) {
     val isCa = user.role == "Manager"
     var showPhotoUpload by remember { mutableStateOf(false) }
     var showChangePasswordDialog by remember { mutableStateOf(false) }
-    var is2faChecked by remember(user.is_mfa_enabled) { mutableStateOf(user.is_mfa_enabled) }
+    val currentUserState by viewModel.currentUser.collectAsStateWithLifecycle()
+    val effectiveMfaEnabled = currentUserState?.is_mfa_enabled ?: user.is_mfa_enabled
+    var is2faChecked by remember { mutableStateOf(effectiveMfaEnabled) }
 
     // 2FA Setup States
     var showSetup2FADialog by remember { mutableStateOf(false) }
@@ -6696,6 +6699,12 @@ fun MyProfileScreen(viewModel: OnSiteViewModel, user: Employee) {
     var isSettingUp2FA by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+
+    LaunchedEffect(effectiveMfaEnabled, showSetup2FADialog) {
+        if (!showSetup2FADialog) {
+            is2faChecked = effectiveMfaEnabled
+        }
+    }
 
     var isEditing by remember { mutableStateOf(false) }
 
@@ -6727,7 +6736,7 @@ fun MyProfileScreen(viewModel: OnSiteViewModel, user: Employee) {
             editAddress = profile.permanent_address
             editPhone = profile.contact.ifBlank { user.contact ?: "" }
             editEmail = profile.official_email.ifBlank { user.email }
-            editEmergencyContact = profile.current_address
+            editEmergencyContact = profile.emergency_contact
             editDoj = ""
             editBloodGroup = profile.blood_group
 
@@ -6872,7 +6881,8 @@ fun MyProfileScreen(viewModel: OnSiteViewModel, user: Employee) {
                                 official_email = editEmail,
                                 personal_email = "",
                                 permanent_address = editAddress,
-                                current_address = editEmergencyContact,
+                                current_address = profile.current_address.ifBlank { editAddress },
+                                emergency_contact = editEmergencyContact,
                                 profile_image = profile.profile_image,
                                 designation = editDept
                             )
@@ -7094,7 +7104,7 @@ fun MyProfileScreen(viewModel: OnSiteViewModel, user: Employee) {
                 Divider(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
                 ProfileRow(label = "Official Email", value = profile.official_email.ifBlank { user.email })
                 Divider(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-                ProfileRow(label = "Emergency Contact", value = profile.current_address)
+                ProfileRow(label = "Emergency Contact", value = profile.emergency_contact)
                 Divider(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
                 ProfileRow(label = "Permanent Address", value = profile.permanent_address)
             }
@@ -7150,6 +7160,7 @@ fun MyProfileScreen(viewModel: OnSiteViewModel, user: Employee) {
                             scope.launch {
                                 try {
                                     if (checked) {
+                                        is2faChecked = false
                                         val response = com.example.api.ApiClient.authService.setup2FA(com.example.api.Setup2FARequest(email = user.email))
                                         setup2FAQrCode = response.qrCode
                                         setup2FASecret = response.secret
@@ -7161,7 +7172,7 @@ fun MyProfileScreen(viewModel: OnSiteViewModel, user: Employee) {
                                         android.widget.Toast.makeText(context, "2FA Disabled", android.widget.Toast.LENGTH_SHORT).show()
                                     }
                                 } catch (e: Exception) {
-                                    is2faChecked = user.is_mfa_enabled
+                                    is2faChecked = effectiveMfaEnabled
                                     android.widget.Toast.makeText(context, "Error updating 2FA: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
                                 }
                             }
@@ -7321,7 +7332,7 @@ fun MyProfileScreen(viewModel: OnSiteViewModel, user: Employee) {
                 setup2FASecret = ""
                 setup2FACode = ""
                 setup2FAError = ""
-                if (!user.is_mfa_enabled) is2faChecked = false
+                is2faChecked = effectiveMfaEnabled
             },
             title = { Text("Setup Two-Factor Authentication") },
             text = {
@@ -7406,7 +7417,7 @@ fun MyProfileScreen(viewModel: OnSiteViewModel, user: Employee) {
                         setup2FASecret = ""
                         setup2FACode = ""
                         setup2FAError = ""
-                        if (!user.is_mfa_enabled) is2faChecked = false
+                        is2faChecked = effectiveMfaEnabled
                     }
                 ) {
                     Text("Cancel")
@@ -8000,37 +8011,61 @@ fun LeaveRequestEmployeeScreen(viewModel: OnSiteViewModel, user: Employee) {
                             }
                         }
 
-                        OutlinedTextField(
-                            value = startDate,
-                            onValueChange = {},
-                            label = { Text("Start Date") },
-                            placeholder = { Text("Select date via calendar") },
-                            readOnly = true,
-                            leadingIcon = { Icon(Icons.Default.DateRange, contentDescription = null) },
-                            trailingIcon = {
-                                IconButton(onClick = { showCalendarForField = "startDate" }) {
-                                    Icon(Icons.Default.CalendarMonth, contentDescription = "Choose Start Date", tint = MaterialTheme.colorScheme.primary)
-                                }
-                            },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth().clickable { showCalendarForField = "startDate" }.testTag("leave_start_date")
-                        )
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { showCalendarForField = "startDate" }
+                                .testTag("leave_start_date")
+                        ) {
+                            OutlinedTextField(
+                                value = startDate,
+                                onValueChange = {},
+                                label = { Text("Start Date") },
+                                placeholder = { Text("Select date via calendar") },
+                                readOnly = true,
+                                leadingIcon = { Icon(Icons.Default.DateRange, contentDescription = null) },
+                                trailingIcon = {
+                                    IconButton(onClick = { showCalendarForField = "startDate" }) {
+                                        Icon(Icons.Default.CalendarMonth, contentDescription = "Choose Start Date", tint = MaterialTheme.colorScheme.primary)
+                                    }
+                                },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .matchParentSize()
+                                    .clickable { showCalendarForField = "startDate" }
+                            )
+                        }
 
-                        OutlinedTextField(
-                            value = endDate,
-                            onValueChange = {},
-                            label = { Text("End Date") },
-                            placeholder = { Text("Select date via calendar") },
-                            readOnly = true,
-                            leadingIcon = { Icon(Icons.Default.DateRange, contentDescription = null) },
-                            trailingIcon = {
-                                IconButton(onClick = { showCalendarForField = "endDate" }) {
-                                    Icon(Icons.Default.CalendarMonth, contentDescription = "Choose End Date", tint = MaterialTheme.colorScheme.primary)
-                                }
-                            },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth().clickable { showCalendarForField = "endDate" }.testTag("leave_end_date")
-                        )
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { showCalendarForField = "endDate" }
+                                .testTag("leave_end_date")
+                        ) {
+                            OutlinedTextField(
+                                value = endDate,
+                                onValueChange = {},
+                                label = { Text("End Date") },
+                                placeholder = { Text("Select date via calendar") },
+                                readOnly = true,
+                                leadingIcon = { Icon(Icons.Default.DateRange, contentDescription = null) },
+                                trailingIcon = {
+                                    IconButton(onClick = { showCalendarForField = "endDate" }) {
+                                        Icon(Icons.Default.CalendarMonth, contentDescription = "Choose End Date", tint = MaterialTheme.colorScheme.primary)
+                                    }
+                                },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .matchParentSize()
+                                    .clickable { showCalendarForField = "endDate" }
+                            )
+                        }
 
                         OutlinedTextField(
                             value = reason,

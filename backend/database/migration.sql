@@ -7,6 +7,7 @@ CREATE TABLE public.users (
     role TEXT NOT NULL DEFAULT 'Staff',
     password_updated_at TIMESTAMP WITH TIME ZONE,
     is_mfa_enabled BOOLEAN DEFAULT FALSE,
+    mfa_secret TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc', now()),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc', now())
 );
@@ -28,6 +29,7 @@ CREATE TABLE public.user_details (
     personal_email TEXT,
     permanent_address TEXT,
     current_address TEXT,
+    emergency_contact TEXT,
     profile_image TEXT,
     designation TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc', now()),

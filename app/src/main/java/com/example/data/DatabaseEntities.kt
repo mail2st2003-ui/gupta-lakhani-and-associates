@@ -37,6 +37,7 @@ data class UserDetails(
     val personal_email: String,
     val permanent_address: String,
     val current_address: String,
+    val emergency_contact: String = "",
     val profile_image: String?,
     val designation: String
 )

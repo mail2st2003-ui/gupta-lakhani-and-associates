@@ -40,6 +40,7 @@ exports.AuthService = void 0;
 const user_repository_1 = require("../repositories/user.repository");
 const otplib = __importStar(require("otplib"));
 const authenticator = otplib.authenticator;
+authenticator.options = { window: 2 };
 const qrcode_1 = __importDefault(require("qrcode"));
 // @ts-ignore
 const SibApiV3Sdk = __importStar(require("sib-api-v3-sdk"));
@@ -65,6 +66,7 @@ class AuthService extends base_service_1.BaseService {
         const resolvedMotherName = mother_name || mothers_name || '';
         const resolvedPermanentAddress = permanent_address || address || '';
         const resolvedCurrentAddress = current_address || resolvedPermanentAddress;
+        const resolvedEmergencyContact = emergency_contact || '';
         const resolvedContact = contact || phone || '';
         const resolvedDesignation = designation || department || '';
         // Validate OTP
@@ -108,6 +110,7 @@ class AuthService extends base_service_1.BaseService {
                 mother_name: resolvedMotherName,
                 permanent_address: resolvedPermanentAddress,
                 current_address: resolvedCurrentAddress,
+                emergency_contact: resolvedEmergencyContact,
                 contact: resolvedContact,
                 official_email: normalizedEmail,
                 personal_email: normalizedEmail,
@@ -137,6 +140,7 @@ class AuthService extends base_service_1.BaseService {
             personal_email: profileData.personal_email || '',
             permanent_address: profileData.permanent_address || '',
             current_address: profileData.current_address || '',
+            emergency_contact: profileData.emergency_contact || '',
             profile_image: profileData.profile_image || null,
             designation: profileData.designation || ''
         });
@@ -236,7 +240,8 @@ class AuthService extends base_service_1.BaseService {
             pending2FASecrets.delete(normalizedEmail);
             throw new Error('2FA setup expired. Please start again.');
         }
-        const isValid = authenticator.check(token, pending.secret);
+        const cleanToken = String(token || '').replace(/\s+/g, '');
+        const isValid = authenticator.check(cleanToken, pending.secret);
         if (!isValid)
             throw new Error('Invalid 2FA code');
         const userProfile = await this.userRepository.getUserByEmail(normalizedEmail);
@@ -258,7 +263,8 @@ class AuthService extends base_service_1.BaseService {
             throw new Error('2FA is not enabled');
         if (!userProfile.mfa_secret)
             throw new Error('2FA secret is missing. Please set up 2FA again.');
-        const isValidToken = authenticator.check(token, userProfile.mfa_secret);
+        const cleanToken = String(token || '').replace(/\s+/g, '');
+        const isValidToken = authenticator.check(cleanToken, userProfile.mfa_secret);
         if (!isValidToken)
             throw new Error('Invalid 2FA code');
         const jwtToken = jsonwebtoken_1.default.sign({ uuid: userProfile.uuid, email: userProfile.email, role: userProfile.role }, process.env.JWT_SECRET || 'fallback-secret-key', { expiresIn: '30d' });

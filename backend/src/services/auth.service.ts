@@ -1,6 +1,7 @@
 import { UserRepository } from '../repositories/user.repository';
 import * as otplib from 'otplib';
 const authenticator = otplib.authenticator;
+authenticator.options = { window: 2 };
 import qrcode from 'qrcode';
 // @ts-ignore
 import * as SibApiV3Sdk from 'sib-api-v3-sdk';
@@ -34,6 +35,7 @@ export class AuthService extends BaseService {
     const resolvedMotherName = mother_name || mothers_name || '';
     const resolvedPermanentAddress = permanent_address || address || '';
     const resolvedCurrentAddress = current_address || resolvedPermanentAddress;
+    const resolvedEmergencyContact = emergency_contact || '';
     const resolvedContact = contact || phone || '';
     const resolvedDesignation = designation || department || '';
 
@@ -83,6 +85,7 @@ export class AuthService extends BaseService {
         mother_name: resolvedMotherName,
         permanent_address: resolvedPermanentAddress,
         current_address: resolvedCurrentAddress,
+        emergency_contact: resolvedEmergencyContact,
         contact: resolvedContact,
         official_email: normalizedEmail,
         personal_email: normalizedEmail,
@@ -113,6 +116,7 @@ export class AuthService extends BaseService {
       personal_email: profileData.personal_email || '',
       permanent_address: profileData.permanent_address || '',
       current_address: profileData.current_address || '',
+      emergency_contact: profileData.emergency_contact || '',
       profile_image: profileData.profile_image || null,
       designation: profileData.designation || ''
     });
@@ -236,7 +240,8 @@ export class AuthService extends BaseService {
       throw new Error('2FA setup expired. Please start again.');
     }
 
-    const isValid = authenticator.check(token, pending.secret);
+    const cleanToken = String(token || '').replace(/\s+/g, '');
+    const isValid = authenticator.check(cleanToken, pending.secret);
     if (!isValid) throw new Error('Invalid 2FA code');
 
     const userProfile = await this.userRepository.getUserByEmail(normalizedEmail);
@@ -258,7 +263,8 @@ export class AuthService extends BaseService {
     if (!userProfile.is_mfa_enabled) throw new Error('2FA is not enabled');
     if (!userProfile.mfa_secret) throw new Error('2FA secret is missing. Please set up 2FA again.');
 
-    const isValidToken = authenticator.check(token, userProfile.mfa_secret);
+    const cleanToken = String(token || '').replace(/\s+/g, '');
+    const isValidToken = authenticator.check(cleanToken, userProfile.mfa_secret);
     if (!isValidToken) throw new Error('Invalid 2FA code');
 
     const jwtToken = jwt.sign(

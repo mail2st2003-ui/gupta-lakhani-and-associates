@@ -4,6 +4,23 @@ exports.UserRepository = void 0;
 const crypto_1 = require("crypto");
 const supabase_1 = require("../config/supabase");
 class UserRepository {
+    flattenUserProfile(user) {
+        if (!user)
+            return user;
+        const details = Array.isArray(user.user_details) ? user.user_details[0] : user.user_details;
+        const { user_details, ...baseUser } = user;
+        if (!details)
+            return baseUser;
+        return {
+            ...baseUser,
+            first_name: details.first_name ?? null,
+            last_name: details.last_name ?? null,
+            designation: details.designation ?? null,
+            profile_image: details.profile_image ?? null,
+            contact: details.contact ?? null,
+            emergency_contact: details.emergency_contact ?? null
+        };
+    }
     async createUser(userData) {
         const { data, error } = await supabase_1.supabase
             .from('users')
@@ -17,22 +34,22 @@ class UserRepository {
     async getUserByUuid(uuid) {
         const { data, error } = await supabase_1.supabase
             .from('users')
-            .select('*')
+            .select('*, user_details(*)')
             .eq('uuid', uuid)
             .single();
         if (error && error.code !== 'PGRST116')
             throw error;
-        return data;
+        return this.flattenUserProfile(data);
     }
     async getUserByEmail(email) {
         const { data, error } = await supabase_1.supabase
             .from('users')
-            .select('*')
+            .select('*, user_details(*)')
             .eq('email', email)
             .single();
         if (error && error.code !== 'PGRST116')
             throw error;
-        return data;
+        return this.flattenUserProfile(data);
     }
     async createDetailedProfile(profileData) {
         const { data, error } = await supabase_1.supabase
@@ -55,13 +72,23 @@ class UserRepository {
         return data;
     }
     async updateProfileImage(userUuid, profileImage) {
+        const { data: updated, error: updateError } = await supabase_1.supabase
+            .from('user_details')
+            .update({ profile_image: profileImage })
+            .eq('user_uuid', userUuid)
+            .select()
+            .maybeSingle();
+        if (updateError)
+            throw updateError;
+        if (updated)
+            return updated;
         const { data, error } = await supabase_1.supabase
             .from('user_details')
-            .upsert([{
+            .insert([{
                 uuid: (0, crypto_1.randomUUID)(),
                 user_uuid: userUuid,
                 profile_image: profileImage
-            }], { onConflict: 'user_uuid' })
+            }])
             .select()
             .single();
         if (error)

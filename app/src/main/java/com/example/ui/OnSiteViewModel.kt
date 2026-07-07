@@ -1305,7 +1305,7 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
                         father_name = fathersName,
                         mother_name = mothersName,
                         permanent_address = address,
-                        current_address = emergencyContact,
+                        current_address = address,
                         contact = phone,
                         emergency_contact = emergencyContact,
                         doj = doj,
@@ -1458,6 +1458,7 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
                     personal_email = emp.email,
                     permanent_address = "",
                     current_address = "",
+                    emergency_contact = "",
                     profile_image = photoBase64,
                     designation = emp.designation ?: ""
                 )

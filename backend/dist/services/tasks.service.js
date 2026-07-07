@@ -60,7 +60,7 @@ class TasksService {
         const isPersonal = taskData.is_personal ?? taskData.isPersonal ?? true;
         if (isPersonal) {
             const todoData = {
-                uuid: taskData.uuid || taskData.id,
+                uuid: taskData.uuid || taskData.id || (0, crypto_1.randomUUID)(),
                 user_uuid: taskData.user_uuid || taskData.employeeId,
                 title: taskData.title,
                 description: taskData.description || '',
@@ -69,9 +69,15 @@ class TasksService {
                 is_completed: taskData.is_completed ?? taskData.isCompleted ?? false,
                 timestamp: taskData.timestamp || Date.now()
             };
+            if (!todoData.user_uuid) {
+                throw new Error('Task user_uuid is required');
+            }
+            if (!todoData.title) {
+                throw new Error('Task title is required');
+            }
             const { data, error } = await supabase_1.supabase
                 .from('todos')
-                .insert([todoData])
+                .upsert([todoData], { onConflict: 'uuid' })
                 .select()
                 .single();
             if (error)

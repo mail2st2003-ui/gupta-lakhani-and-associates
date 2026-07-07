@@ -65,7 +65,7 @@ export class TasksService {
 
     if (isPersonal) {
       const todoData = {
-        uuid: taskData.uuid || taskData.id,
+        uuid: taskData.uuid || taskData.id || randomUUID(),
         user_uuid: taskData.user_uuid || taskData.employeeId,
         title: taskData.title,
         description: taskData.description || '',
@@ -75,9 +75,16 @@ export class TasksService {
         timestamp: taskData.timestamp || Date.now()
       };
 
+      if (!todoData.user_uuid) {
+        throw new Error('Task user_uuid is required');
+      }
+      if (!todoData.title) {
+        throw new Error('Task title is required');
+      }
+
       const { data, error } = await supabase
         .from('todos')
-        .insert([todoData])
+        .upsert([todoData], { onConflict: 'uuid' })
         .select()
         .single();
       if (error) throw error;

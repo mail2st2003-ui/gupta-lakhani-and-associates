@@ -2,6 +2,24 @@ import { randomUUID } from 'crypto';
 import { supabase } from '../config/supabase';
 
 export class UserRepository {
+  private flattenUserProfile(user: any) {
+    if (!user) return user;
+    const details = Array.isArray(user.user_details) ? user.user_details[0] : user.user_details;
+    const { user_details, ...baseUser } = user;
+
+    if (!details) return baseUser;
+
+    return {
+      ...baseUser,
+      first_name: details.first_name ?? null,
+      last_name: details.last_name ?? null,
+      designation: details.designation ?? null,
+      profile_image: details.profile_image ?? null,
+      contact: details.contact ?? null,
+      emergency_contact: details.emergency_contact ?? null
+    };
+  }
+
   async createUser(userData: any) {
     const { data, error } = await supabase
       .from('users')
@@ -16,23 +34,23 @@ export class UserRepository {
   async getUserByUuid(uuid: string) {
     const { data, error } = await supabase
       .from('users')
-      .select('*')
+      .select('*, user_details(*)')
       .eq('uuid', uuid)
       .single();
 
     if (error && error.code !== 'PGRST116') throw error;
-    return data;
+    return this.flattenUserProfile(data);
   }
 
   async getUserByEmail(email: string) {
     const { data, error } = await supabase
       .from('users')
-      .select('*')
+      .select('*, user_details(*)')
       .eq('email', email)
       .single();
 
     if (error && error.code !== 'PGRST116') throw error;
-    return data;
+    return this.flattenUserProfile(data);
   }
 
   async createDetailedProfile(profileData: any) {
@@ -58,13 +76,23 @@ export class UserRepository {
   }
 
   async updateProfileImage(userUuid: string, profileImage: string | null) {
+    const { data: updated, error: updateError } = await supabase
+      .from('user_details')
+      .update({ profile_image: profileImage })
+      .eq('user_uuid', userUuid)
+      .select()
+      .maybeSingle();
+
+    if (updateError) throw updateError;
+    if (updated) return updated;
+
     const { data, error } = await supabase
       .from('user_details')
-      .upsert([{
+      .insert([{
         uuid: randomUUID(),
         user_uuid: userUuid,
         profile_image: profileImage
-      }], { onConflict: 'user_uuid' })
+      }])
       .select()
       .single();
 
