@@ -24,22 +24,22 @@ data class Employee(
 data class UserDetails(
     @PrimaryKey val uuid: String,
     val user_uuid: String,
-    val first_name: String,
-    val middle_name: String?,
-    val last_name: String,
-    val father_name: String,
-    val mother_name: String,
-    val dob: String,
-    val gender: String,
-    val blood_group: String,
-    val contact: String,
-    val official_email: String,
-    val personal_email: String,
-    val permanent_address: String,
-    val current_address: String,
-    val emergency_contact: String = "",
-    val profile_image: String?,
-    val designation: String
+    val first_name: String? = null,
+    val middle_name: String? = null,
+    val last_name: String? = null,
+    val father_name: String? = null,
+    val mother_name: String? = null,
+    val dob: String? = null,
+    val gender: String? = null,
+    val blood_group: String? = null,
+    val contact: String? = null,
+    val official_email: String? = null,
+    val personal_email: String? = null,
+    val permanent_address: String? = null,
+    val current_address: String? = null,
+    val emergency_contact: String? = null,
+    val profile_image: String? = null,
+    val designation: String? = null
 )
 
 @Entity(tableName = "attendance_logs")
