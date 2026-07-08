@@ -94,10 +94,18 @@ fun OnSiteApp(viewModel: OnSiteViewModel = viewModel()) {
         listOf(Icons.Default.LocationOn, Icons.Default.Checklist, Icons.Default.Chat, Icons.Default.Forum, Icons.Default.EventNote, Icons.Default.Person)
     }
 
+    var showSessionExpiredDialog by remember { mutableStateOf(false) }
+
     LaunchedEffect(currentUser?.uuid) {
         if (currentUser != null) {
             selectedTab = 0
             landingMode = null
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        viewModel.sessionExpiredEvent.collect {
+            showSessionExpiredDialog = true
         }
     }
 
@@ -117,6 +125,19 @@ fun OnSiteApp(viewModel: OnSiteViewModel = viewModel()) {
                 showExitDialog = true
             }
         }
+    }
+
+    if (showSessionExpiredDialog) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showSessionExpiredDialog = false },
+            title = { Text("Session Expired") },
+            text = { Text("Your session has expired or your login data was lost. Please log in again to continue.") },
+            confirmButton = {
+                TextButton(onClick = { showSessionExpiredDialog = false }) {
+                    Text("OK", fontWeight = FontWeight.Bold)
+                }
+            }
+        )
     }
 
     ModalNavigationDrawer(
@@ -2494,9 +2515,18 @@ fun EmployeeOnSiteScreen(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun EmployeeTasksScreen(viewModel: OnSiteViewModel, currentUser: Employee) {
+    var selectedSubTab by remember { mutableStateOf(0) } // 0 = Assigned Tasks, 1 = My Personal To-Dos
+
+    LaunchedEffect(selectedSubTab) {
+        if (selectedSubTab == 0) {
+            viewModel.fetchRemoteAssignedTasksForUser(currentUser.uuid)
+        } else {
+            viewModel.fetchRemoteTodosForUser(currentUser.uuid)
+        }
+    }
+    
     val tasks by viewModel.currentEmployeeTodoItems.collectAsStateWithLifecycle()
     
-    var selectedSubTab by remember { mutableStateOf(0) } // 0 = Assigned Tasks, 1 = My Personal To-Dos
     var showAddTaskDialog by remember { mutableStateOf(false) } // For personal to-do list
     
     val assignedTasks = tasks.filter { !it.is_personal }
@@ -5142,6 +5172,10 @@ fun ManagerAlertDispatch(viewModel: OnSiteViewModel) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ManagerTasksDashboard(viewModel: OnSiteViewModel, currentUser: Employee) {
+    LaunchedEffect(Unit) {
+        viewModel.fetchRemoteAssignedTasksForUser(currentUser.uuid)
+    }
+
     val allTasks by viewModel.allTodoItems.collectAsStateWithLifecycle()
     val employees by viewModel.employees.collectAsStateWithLifecycle()
     
@@ -7917,6 +7951,10 @@ fun AppliedLeaveTableRow(req: LeaveRequest, onEdit: () -> Unit, onDelete: () -> 
 
 @Composable
 fun LeaveRequestEmployeeScreen(viewModel: OnSiteViewModel, user: Employee) {
+    LaunchedEffect(Unit) {
+        viewModel.fetchRemoteLeavesForUser(user.uuid)
+    }
+
     val employees by viewModel.employees.collectAsStateWithLifecycle()
     val allLeaveRequests by viewModel.allLeaveRequests.collectAsStateWithLifecycle()
 
@@ -8315,9 +8353,10 @@ fun LeaveRequestEmployeeScreen(viewModel: OnSiteViewModel, user: Employee) {
         if (editShowCal != null) {
             val fieldName = editShowCal!!
             val currentVal = if (fieldName == "start") editStart else editEnd
+            val todayStr = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date())
             CalendarDialog(
-                initialDate = if (currentVal.isBlank()) "2026-07-01" else currentVal,
-                minDate = if (fieldName == "end" && editStart.isNotBlank()) editStart else null,
+                initialDate = if (currentVal.isBlank()) todayStr else currentVal,
+                minDate = if (fieldName == "end" && editStart.isNotBlank()) editStart else todayStr,
                 maxDate = if (fieldName == "start" && editEnd.isNotBlank()) editEnd else null,
                 format = "yyyy-MM-dd",
                 onDismissRequest = { editShowCal = null },
@@ -8341,9 +8380,10 @@ fun LeaveRequestEmployeeScreen(viewModel: OnSiteViewModel, user: Employee) {
             "endDate" -> endDate
             else -> ""
         }
+        val todayStr = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date())
         CalendarDialog(
-            initialDate = if (currentVal.isBlank()) "2026-07-01" else currentVal,
-            minDate = if (fieldName == "endDate" && startDate.isNotBlank()) startDate else null,
+            initialDate = if (currentVal.isBlank()) todayStr else currentVal,
+            minDate = if (fieldName == "endDate" && startDate.isNotBlank()) startDate else todayStr,
             maxDate = if (fieldName == "startDate" && endDate.isNotBlank()) endDate else null,
             format = "yyyy-MM-dd",
             onDismissRequest = { showCalendarForField = null },
@@ -8365,6 +8405,10 @@ fun LeaveRequestEmployeeScreen(viewModel: OnSiteViewModel, user: Employee) {
 
 @Composable
 fun LeaveRequestsManagerScreen(viewModel: OnSiteViewModel, user: Employee) {
+    LaunchedEffect(Unit) {
+        viewModel.fetchRemoteLeavesForUser(user.uuid)
+    }
+
     val allLeaveRequests by viewModel.allLeaveRequests.collectAsStateWithLifecycle()
     val employees by viewModel.employees.collectAsStateWithLifecycle()
 

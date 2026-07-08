@@ -40,6 +40,9 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
     private val repository: OnSiteRepository
 
     // Current Session / Role State
+    private val _sessionExpiredEvent = kotlinx.coroutines.flow.MutableSharedFlow<Unit>()
+    val sessionExpiredEvent = _sessionExpiredEvent.asSharedFlow()
+
     private val _currentUser = MutableStateFlow<Employee?>(null)
     val currentUser: StateFlow<Employee?> = _currentUser.asStateFlow()
 
@@ -250,8 +253,23 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
         // Restore user session if saved
         viewModelScope.launch {
             val savedUserId = themePrefs.getString("logged_in_user_id", null)
+            val savedUserDetailsJson = themePrefs.getString("logged_in_user_details", null)
             if (savedUserId != null) {
                 var employee = repository.getEmployeeById(savedUserId)
+                
+                if (employee == null && savedUserDetailsJson != null) {
+                    try {
+                        val moshi = com.squareup.moshi.Moshi.Builder().add(com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory()).build()
+                        val adapter = moshi.adapter(Employee::class.java)
+                        employee = adapter.fromJson(savedUserDetailsJson)
+                        if (employee != null) {
+                            repository.insertEmployees(listOf(employee))
+                        }
+                    } catch (e: Exception) {
+                        android.util.Log.e("OnSiteViewModel", "Failed to parse saved user details", e)
+                    }
+                }
+                
                 if (employee == null) {
                     for (i in 1..15) {
                         kotlinx.coroutines.delay(200)
@@ -259,9 +277,14 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
                         if (employee != null) break
                     }
                 }
+                
                 if (employee != null) {
                     _currentUser.value = employee
                     _isManager.value = (employee.role == "Manager")
+                    // Removed bulk fetching on session restore
+                } else {
+                    themePrefs.edit().remove("logged_in_user_id").remove("logged_in_user_details").apply()
+                    _sessionExpiredEvent.emit(Unit)
                 }
             }
         }
@@ -518,13 +541,22 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
     fun selectUserSession(employee: Employee) {
         _currentUser.value = employee
         _isManager.value = (employee.role == "Manager")
-        themePrefs.edit().putString("logged_in_user_id", employee.uuid).apply()
+        try {
+            val moshi = com.squareup.moshi.Moshi.Builder().add(com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory()).build()
+            val json = moshi.adapter(Employee::class.java).toJson(employee)
+            themePrefs.edit()
+                .putString("logged_in_user_id", employee.uuid)
+                .putString("logged_in_user_details", json)
+                .apply()
+        } catch (e: Exception) {
+            themePrefs.edit().putString("logged_in_user_id", employee.uuid).apply()
+        }
     }
 
     fun logoutSession() {
         _currentUser.value = null
         _isManager.value = false
-        themePrefs.edit().remove("logged_in_user_id").apply()
+        themePrefs.edit().remove("logged_in_user_id").remove("logged_in_user_details").apply()
     }
 
     // Offline / Sync Toggles
@@ -1066,7 +1098,8 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
             try {
                 if (!_isOfflineMode.value) {
                     com.example.api.ApiClient.todosService.createTodo(task)
-                    fetchRemoteTasksForUser(user.uuid)
+                    fetchRemoteAssignedTasksForUser(user.uuid)
+                    fetchRemoteTodosForUser(user.uuid)
                 }
                 repository.insertTodoItem(task)
             } catch (e: Exception) {
@@ -1088,7 +1121,8 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
             if (!_isOfflineMode.value) {
                 try {
                     com.example.api.ApiClient.todosService.updateTodo(updatedTask.uuid, updatedTask)
-                    fetchRemoteTasksForUser(updatedTask.user_uuid)
+                    fetchRemoteAssignedTasksForUser(updatedTask.user_uuid)
+                    fetchRemoteTodosForUser(updatedTask.user_uuid)
                 } catch (e: Exception) {
                     _syncStatus.value = "Failed to sync status update. Saved offline."
                 }
@@ -1111,7 +1145,8 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
             if (!_isOfflineMode.value) {
                 try {
                     com.example.api.ApiClient.todosService.updateTodo(updatedTask.uuid, updatedTask)
-                    fetchRemoteTasksForUser(updatedTask.user_uuid)
+                    fetchRemoteAssignedTasksForUser(updatedTask.user_uuid)
+                    fetchRemoteTodosForUser(updatedTask.user_uuid)
                 } catch (e: Exception) {
                     _syncStatus.value = "Failed to sync status update. Saved offline."
                 }
@@ -1128,7 +1163,8 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
             if (!_isOfflineMode.value) {
                 try {
                     com.example.api.ApiClient.todosService.deleteTodo(id)
-                    fetchRemoteTasksForUser(user.uuid)
+                    fetchRemoteAssignedTasksForUser(user.uuid)
+                    fetchRemoteTodosForUser(user.uuid)
                 } catch (e: Exception) {
                     _syncStatus.value = "Failed to sync delete."
                 }
@@ -1147,7 +1183,8 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
             if (!_isOfflineMode.value) {
                 try {
                     com.example.api.ApiClient.todosService.updateTodo(updatedTask.uuid, updatedTask)
-                    fetchRemoteTasksForUser(updatedTask.user_uuid)
+                    fetchRemoteAssignedTasksForUser(updatedTask.user_uuid)
+                    fetchRemoteTodosForUser(updatedTask.user_uuid)
                 } catch (e: Exception) {}
             }
         }
@@ -1164,7 +1201,8 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
             if (!_isOfflineMode.value) {
                 try {
                     com.example.api.ApiClient.todosService.updateTodo(updatedTask.uuid, updatedTask)
-                    fetchRemoteTasksForUser(updatedTask.user_uuid)
+                    fetchRemoteAssignedTasksForUser(updatedTask.user_uuid)
+                    fetchRemoteTodosForUser(updatedTask.user_uuid)
                 } catch (e: Exception) {}
             }
         }
@@ -1404,7 +1442,6 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch {
             repository.insertEmployees(listOf(user))
             selectUserSession(user)
-            fetchRemoteTasksForUser(user.uuid)
             fetchAllUsersFromServer()
         }
     }
@@ -1421,32 +1458,45 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    private suspend fun fetchRemoteTasksForUser(userUuid: String) {
-        if (_isOfflineMode.value) return
-        try {
-            val remoteTasks = com.example.api.ApiClient.tasksService.getTasks(userUuid)
-            remoteTasks.forEach { task ->
-                repository.insertTodoItem(task.copy(isSynced = true, is_personal = false))
+    fun fetchRemoteAssignedTasksForUser(userUuid: String) {
+        viewModelScope.launch {
+            if (_isOfflineMode.value) return@launch
+            try {
+                val remoteTasks = com.example.api.ApiClient.tasksService.getTasks(userUuid)
+                remoteTasks.forEach { task ->
+                    repository.insertTodoItem(task.copy(isSynced = true, is_personal = false))
+                }
+            } catch (e: Exception) {
+                Log.e("OnSiteViewModel", "Failed to fetch remote tasks", e)
             }
-            
-            val remoteTodos = com.example.api.ApiClient.todosService.getUserTodos(userUuid)
-            remoteTodos.forEach { todo ->
-                repository.insertTodoItem(todo.copy(isSynced = true, is_personal = true))
-            }
-        } catch (e: Exception) {
-            Log.e("OnSiteViewModel", "Failed to fetch remote tasks/todos", e)
         }
     }
 
-    private suspend fun fetchRemoteLeavesForUser(userUuid: String) {
-        if (_isOfflineMode.value) return
-        try {
-            val remoteLeaves = com.example.api.ApiClient.leavesService.getUserLeaves(userUuid)
-            remoteLeaves.forEach { leave ->
-                repository.insertLeaveRequest(leave.copy(isSynced = true))
+    fun fetchRemoteTodosForUser(userUuid: String) {
+        viewModelScope.launch {
+            if (_isOfflineMode.value) return@launch
+            try {
+                val remoteTodos = com.example.api.ApiClient.todosService.getUserTodos(userUuid)
+                remoteTodos.forEach { todo ->
+                    repository.insertTodoItem(todo.copy(isSynced = true, is_personal = true))
+                }
+            } catch (e: Exception) {
+                Log.e("OnSiteViewModel", "Failed to fetch remote todos", e)
             }
-        } catch (e: Exception) {
-            Log.e("OnSiteViewModel", "Failed to fetch remote leaves", e)
+        }
+    }
+
+    fun fetchRemoteLeavesForUser(userUuid: String) {
+        viewModelScope.launch {
+            if (_isOfflineMode.value) return@launch
+            try {
+                val remoteLeaves = com.example.api.ApiClient.leavesService.getUserLeaves(userUuid)
+                remoteLeaves.forEach { leave ->
+                    repository.insertLeaveRequest(leave.copy(isSynced = true))
+                }
+            } catch (e: Exception) {
+                Log.e("OnSiteViewModel", "Failed to fetch remote leaves", e)
+            }
         }
     }
 
