@@ -121,6 +121,9 @@ interface AppDao {
     @Update
     suspend fun updateLeaveRequest(request: LeaveRequest)
 
+    @Query("DELETE FROM leave_requests WHERE uuid = :uuid")
+    suspend fun deleteLeaveRequestById(uuid: String)
+
     @Query("SELECT * FROM summons WHERE staff_uuid = :staff_uuid AND is_cleared = 0")
     fun getActiveSummonsForStaffFlow(staff_uuid: String): Flow<List<SummonAlert>>
 
@@ -258,6 +261,10 @@ class OnSiteRepository(private val dao: AppDao) {
         if (request != null) {
             dao.updateLeaveRequest(request.copy(status = status, comment = comment, manager_uuid = manager_uuid))
         }
+    }
+
+    suspend fun deleteLeaveRequest(uuid: String) {
+        dao.deleteLeaveRequestById(uuid)
     }
 
     suspend fun insertSummon(summon: SummonAlert) {

@@ -7854,16 +7854,17 @@ fun AppliedLeaveTableHeader() {
             .padding(horizontal = 8.dp, vertical = 10.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Text("Start", modifier = Modifier.weight(0.9f), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
-        Text("End", modifier = Modifier.weight(0.9f), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
-        Text("Days", modifier = Modifier.weight(0.55f), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
-        Text("Reason", modifier = Modifier.weight(1.35f), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
-        Text("Status", modifier = Modifier.weight(0.9f), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+        Text("Start", modifier = Modifier.weight(0.85f), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+        Text("End", modifier = Modifier.weight(0.85f), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+        Text("Days", modifier = Modifier.weight(0.5f), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+        Text("Reason", modifier = Modifier.weight(1.3f), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+        Text("Status", modifier = Modifier.weight(0.85f), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+        Box(modifier = Modifier.weight(0.35f))
     }
 }
 
 @Composable
-fun AppliedLeaveTableRow(req: LeaveRequest) {
+fun AppliedLeaveTableRow(req: LeaveRequest, onEdit: () -> Unit, onDelete: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -7872,13 +7873,13 @@ fun AppliedLeaveTableRow(req: LeaveRequest) {
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(req.start_date, modifier = Modifier.weight(0.9f), style = MaterialTheme.typography.bodySmall)
-        Text(req.end_date, modifier = Modifier.weight(0.9f), style = MaterialTheme.typography.bodySmall)
-        Text(calculateLeaveDays(req.start_date, req.end_date).toString(), modifier = Modifier.weight(0.55f), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
-        Text(req.reason, modifier = Modifier.weight(1.35f), style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        Text(req.start_date, modifier = Modifier.weight(0.85f), style = MaterialTheme.typography.bodySmall)
+        Text(req.end_date, modifier = Modifier.weight(0.85f), style = MaterialTheme.typography.bodySmall)
+        Text(calculateLeaveDays(req.start_date, req.end_date).toString(), modifier = Modifier.weight(0.5f), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+        Text(req.reason, modifier = Modifier.weight(1.3f), style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
         Text(
             req.status,
-            modifier = Modifier.weight(0.9f),
+            modifier = Modifier.weight(0.85f),
             style = MaterialTheme.typography.bodySmall,
             fontWeight = FontWeight.Bold,
             color = when (req.status) {
@@ -7887,6 +7888,30 @@ fun AppliedLeaveTableRow(req: LeaveRequest) {
                 else -> Color(0xFFE65100)
             }
         )
+        Box(modifier = Modifier.weight(0.35f), contentAlignment = Alignment.Center) {
+            if (req.status == "Pending") {
+                var showMenu by remember { mutableStateOf(false) }
+                IconButton(onClick = { showMenu = true }, modifier = Modifier.size(24.dp)) {
+                    Icon(Icons.Default.MoreVert, contentDescription = "Actions", modifier = Modifier.size(16.dp))
+                }
+                DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                    DropdownMenuItem(
+                        text = { Text("Edit") },
+                        onClick = {
+                            showMenu = false
+                            onEdit()
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Delete", color = MaterialTheme.colorScheme.error) },
+                        onClick = {
+                            showMenu = false
+                            onDelete()
+                        }
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -7907,6 +7932,8 @@ fun LeaveRequestEmployeeScreen(viewModel: OnSiteViewModel, user: Employee) {
     var applyToAll by remember { mutableStateOf(true) }
     var errorMessage by remember { mutableStateOf("") }
     var showCalendarForField by remember { mutableStateOf<String?>(null) }
+    var editingLeaveRequest by remember { mutableStateOf<LeaveRequest?>(null) }
+    var deletingLeaveRequest by remember { mutableStateOf<LeaveRequest?>(null) }
 
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
@@ -8187,10 +8214,123 @@ fun LeaveRequestEmployeeScreen(viewModel: OnSiteViewModel, user: Employee) {
                 ) {
                     item { AppliedLeaveTableHeader() }
                     items(myLeaveRequests) { req ->
-                        AppliedLeaveTableRow(req)
+                        AppliedLeaveTableRow(
+                            req = req,
+                            onEdit = { editingLeaveRequest = req },
+                            onDelete = { deletingLeaveRequest = req }
+                        )
                     }
                 }
             }
+        }
+    }
+
+    if (deletingLeaveRequest != null) {
+        val req = deletingLeaveRequest!!
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { deletingLeaveRequest = null },
+            title = { Text("Delete Leave Request") },
+            text = { Text("Are you sure you want to delete this leave application?") },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.deleteLeaveRequest(req.uuid)
+                    deletingLeaveRequest = null
+                    android.widget.Toast.makeText(context, "Leave deleted", android.widget.Toast.LENGTH_SHORT).show()
+                }) { Text("Delete", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = {
+                TextButton(onClick = { deletingLeaveRequest = null }) { Text("Cancel") }
+            }
+        )
+    }
+
+    if (editingLeaveRequest != null) {
+        var editReason by remember { mutableStateOf(editingLeaveRequest!!.reason) }
+        var editStart by remember { mutableStateOf(editingLeaveRequest!!.start_date) }
+        var editEnd by remember { mutableStateOf(editingLeaveRequest!!.end_date) }
+        var editShowCal by remember { mutableStateOf<String?>(null) }
+
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { editingLeaveRequest = null },
+            title = { Text("Edit Leave Request") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    OutlinedTextField(
+                        value = editStart,
+                        onValueChange = {},
+                        label = { Text("Start Date") },
+                        modifier = Modifier.fillMaxWidth().clickable { editShowCal = "start" },
+                        enabled = false,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            disabledTextColor = MaterialTheme.colorScheme.onSurface,
+                            disabledBorderColor = MaterialTheme.colorScheme.outline,
+                            disabledLabelColor = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    )
+                    OutlinedTextField(
+                        value = editEnd,
+                        onValueChange = {},
+                        label = { Text("End Date") },
+                        modifier = Modifier.fillMaxWidth().clickable { editShowCal = "end" },
+                        enabled = false,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            disabledTextColor = MaterialTheme.colorScheme.onSurface,
+                            disabledBorderColor = MaterialTheme.colorScheme.outline,
+                            disabledLabelColor = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    )
+                    OutlinedTextField(
+                        value = editReason,
+                        onValueChange = { editReason = it },
+                        label = { Text("Reason") },
+                        modifier = Modifier.fillMaxWidth(),
+                        minLines = 2
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        coroutineScope.launch {
+                            if (editStart != editingLeaveRequest!!.start_date || editEnd != editingLeaveRequest!!.end_date) {
+                                val hasOverlap = viewModel.checkLeaveOverlap(user.uuid, editStart, editEnd)
+                                if (hasOverlap) {
+                                    android.widget.Toast.makeText(context, "Leave already exists for this new date range", android.widget.Toast.LENGTH_LONG).show()
+                                    return@launch
+                                }
+                            }
+                            viewModel.updateLeaveRequest(editingLeaveRequest!!.uuid, editReason, editStart, editEnd)
+                            editingLeaveRequest = null
+                            android.widget.Toast.makeText(context, "Leave updated", android.widget.Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    enabled = editReason.isNotBlank() && editStart.isNotBlank() && editEnd.isNotBlank() && editEnd >= editStart
+                ) { Text("Save") }
+            },
+            dismissButton = {
+                TextButton(onClick = { editingLeaveRequest = null }) { Text("Cancel") }
+            }
+        )
+
+        if (editShowCal != null) {
+            val fieldName = editShowCal!!
+            val currentVal = if (fieldName == "start") editStart else editEnd
+            CalendarDialog(
+                initialDate = if (currentVal.isBlank()) "2026-07-01" else currentVal,
+                minDate = if (fieldName == "end" && editStart.isNotBlank()) editStart else null,
+                maxDate = if (fieldName == "start" && editEnd.isNotBlank()) editEnd else null,
+                format = "yyyy-MM-dd",
+                onDismissRequest = { editShowCal = null },
+                onDateSelected = { selectedDate ->
+                    if (fieldName == "start") {
+                        editStart = selectedDate
+                        if (editEnd.isNotBlank() && editEnd < selectedDate) editEnd = ""
+                    } else {
+                        editEnd = selectedDate
+                    }
+                    editShowCal = null
+                }
+            )
         }
     }
 

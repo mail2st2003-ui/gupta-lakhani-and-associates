@@ -1515,6 +1515,33 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    fun updateLeaveRequest(requestId: String, reason: String, startDate: String, endDate: String) {
+        viewModelScope.launch {
+            val target = allLeaveRequests.value.find { it.uuid == requestId } ?: return@launch
+            val updated = target.copy(reason = reason, start_date = startDate, end_date = endDate, isSynced = !_isOfflineMode.value)
+            repository.insertLeaveRequest(updated)
+            if (!_isOfflineMode.value) {
+                try {
+                    com.example.api.ApiClient.leavesService.updateLeave(requestId, updated)
+                    fetchRemoteLeavesForUser(target.user_uuid)
+                } catch (e: Exception) {}
+            }
+        }
+    }
+
+    fun deleteLeaveRequest(requestId: String) {
+        viewModelScope.launch {
+            val target = allLeaveRequests.value.find { it.uuid == requestId } ?: return@launch
+            repository.deleteLeaveRequest(requestId)
+            if (!_isOfflineMode.value) {
+                try {
+                    com.example.api.ApiClient.leavesService.deleteLeave(requestId)
+                    fetchRemoteLeavesForUser(target.user_uuid)
+                } catch (e: Exception) {}
+            }
+        }
+    }
+
     fun approveLeaveRequest(requestId: String, approverName: String, comment: String) {
         viewModelScope.launch {
             val target = allLeaveRequests.value.find { it.uuid == requestId } ?: return@launch
