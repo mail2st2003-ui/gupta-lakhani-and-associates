@@ -12,6 +12,7 @@ router.post('/register', [
   body('otp').notEmpty().withMessage('OTP is required')
 ], authController.register);
 
+router.get('/profile/:userUuid', authController.getUserProfile);
 router.put('/profile/:userUuid', authController.updateProfile);
 router.put('/profile/:userUuid/photo', authController.updateProfileImage);
 

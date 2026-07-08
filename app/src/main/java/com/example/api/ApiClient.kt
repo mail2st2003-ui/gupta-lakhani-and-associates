@@ -108,6 +108,9 @@ interface AuthApiService {
 
     @GET("api/auth/users")
     suspend fun getAllUsers(): List<com.example.data.Employee>
+
+    @GET("api/auth/profile/{userUuid}")
+    suspend fun getUserProfile(@Path("userUuid") userUuid: String): com.example.data.UserDetails
 }
 
 data class SendOtpRequest(val email: String)
@@ -201,7 +204,8 @@ interface LeavesApiService {
     suspend fun checkOverlap(
         @Path("userUuid") userUuid: String,
         @Query("start") start: Long,
-        @Query("end") end: Long
+        @Query("end") end: Long,
+        @Query("exclude") exclude: String? = null
     ): OverlapResponse
 }
 

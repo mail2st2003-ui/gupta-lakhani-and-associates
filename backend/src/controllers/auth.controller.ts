@@ -20,6 +20,16 @@ export class AuthController {
     }
   };
 
+  getUserProfile = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const userUuid = String(req.params.userUuid);
+      const data = await this.authService.getUserProfile(userUuid);
+      res.status(200).json(data);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  };
+
   updateProfile = async (req: Request, res: Response): Promise<void> => {
     try {
       const userUuid = String(req.params.userUuid);

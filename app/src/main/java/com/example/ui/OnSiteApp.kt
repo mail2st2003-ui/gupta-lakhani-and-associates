@@ -1919,26 +1919,7 @@ fun EmployeeOnSiteScreen(
                                             fontWeight = FontWeight.Bold,
                                             modifier = Modifier.weight(1f)
                                         )
-                                        Surface(
-                                            color = when (task.priority) {
-                                                "Urgent" -> Color(0xFFFFEBEE)
-                                                "High" -> Color(0xFFFFF3E0)
-                                                else -> Color(0xFFF5F5F5)
-                                            },
-                                            shape = RoundedCornerShape(4.dp)
-                                        ) {
-                                            Text(
-                                                text = task.priority,
-                                                color = when (task.priority) {
-                                                    "Urgent" -> Color(0xFFC62828)
-                                                    "High" -> Color(0xFFEF6C00)
-                                                    else -> Color(0xFF616161)
-                                                },
-                                                style = MaterialTheme.typography.labelSmall,
-                                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
-                                                fontWeight = FontWeight.Bold
-                                            )
-                                        }
+
                                     }
                                     if (task.description.isNotEmpty()) {
                                         Spacer(modifier = Modifier.height(2.dp))
@@ -2660,28 +2641,6 @@ fun EmployeeTasksScreen(viewModel: OnSiteViewModel, currentUser: Employee) {
                                             )
                                         }
                                     }
-                                    
-                                    // Priority Badge
-                                    Surface(
-                                        color = when (task.priority) {
-                                            "High" -> Color(0xFFFFEBEE)
-                                            "Medium" -> Color(0xFFFFF3E0)
-                                            else -> Color(0xFFE8F5E9)
-                                        },
-                                        shape = RoundedCornerShape(4.dp)
-                                    ) {
-                                        Text(
-                                            text = task.priority,
-                                            color = when (task.priority) {
-                                                "High" -> Color(0xFFC62828)
-                                                "Medium" -> Color(0xFFEF6C00)
-                                                else -> Color(0xFF2E7D32)
-                                            },
-                                            style = MaterialTheme.typography.labelSmall,
-                                            fontWeight = FontWeight.Bold,
-                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                        )
-                                    }
                                 }
                                 
                                 Divider(
@@ -2869,27 +2828,7 @@ fun EmployeeTasksScreen(viewModel: OnSiteViewModel, currentUser: Employee) {
                                     }
                                     
                                     Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Surface(
-                                            color = when (task.priority) {
-                                                "High" -> Color(0xFFFFEBEE)
-                                                "Medium" -> Color(0xFFFFF3E0)
-                                                else -> Color(0xFFE8F5E9)
-                                            },
-                                            shape = RoundedCornerShape(4.dp)
-                                        ) {
-                                            Text(
-                                                text = task.priority,
-                                                color = when (task.priority) {
-                                                    "High" -> Color(0xFFC62828)
-                                                    "Medium" -> Color(0xFFEF6C00)
-                                                    else -> Color(0xFF2E7D32)
-                                                },
-                                                style = MaterialTheme.typography.labelSmall,
-                                                fontWeight = FontWeight.Bold,
-                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                            )
-                                        }
-                                        Spacer(modifier = Modifier.width(6.dp))
+
                                         IconButton(
                                             onClick = { viewModel.deleteTask(task.uuid) },
                                             modifier = Modifier.size(24.dp)
@@ -2926,7 +2865,6 @@ fun EmployeeTasksScreen(viewModel: OnSiteViewModel, currentUser: Employee) {
     if (showAddTaskDialog) {
         var taskTitle by remember { mutableStateOf("") }
         var taskDesc by remember { mutableStateOf("") }
-        var selectedPriority by remember { mutableStateOf("Medium") }
         
         AlertDialog(
             onDismissRequest = { showAddTaskDialog = false },
@@ -2946,41 +2884,15 @@ fun EmployeeTasksScreen(viewModel: OnSiteViewModel, currentUser: Employee) {
                         label = { Text("Task Description") },
                         modifier = Modifier.fillMaxWidth()
                     )
-                    
-                    Text(
-                        text = "Priority Level:",
-                        style = MaterialTheme.typography.bodySmall,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(top = 4.dp)
-                    )
-                    
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        listOf("High", "Medium", "Low").forEach { level ->
-                            OutlinedButton(
-                                onClick = { selectedPriority = level },
-                                modifier = Modifier.weight(1f),
-                                colors = ButtonDefaults.outlinedButtonColors(
-                                    containerColor = if (selectedPriority == level)
-                                        MaterialTheme.colorScheme.primaryContainer
-                                    else Color.Transparent
-                                )
-                            ) {
-                                Text(level, style = MaterialTheme.typography.bodySmall)
-                            }
-                        }
-                    }
                 }
             },
             confirmButton = {
-                Button(
-                    onClick = {
-                        if (taskTitle.isNotBlank()) {
-                            viewModel.addPersonalTodo(taskTitle, taskDesc, selectedPriority)
-                            showAddTaskDialog = false
-                        }
+                    Button(
+                        onClick = {
+                            if (taskTitle.isNotBlank()) {
+                                viewModel.addPersonalTodo(taskTitle, taskDesc)
+                                showAddTaskDialog = false
+                            }
                     }
                 ) {
                     Text("Save Task")
@@ -5272,27 +5184,7 @@ fun ManagerTasksDashboard(viewModel: OnSiteViewModel, currentUser: Employee) {
                                             )
                                         }
                                         
-                                        // Priority pill
-                                        Surface(
-                                            color = when (task.priority) {
-                                                "Urgent" -> Color(0xFFFFEBEE)
-                                                "High" -> Color(0xFFFFF3E0)
-                                                else -> Color(0xFFF5F5F5)
-                                            },
-                                            shape = RoundedCornerShape(4.dp)
-                                        ) {
-                                            Text(
-                                                text = task.priority,
-                                                color = when (task.priority) {
-                                                    "Urgent" -> Color(0xFFC62828)
-                                                    "High" -> Color(0xFFEF6C00)
-                                                    else -> Color(0xFF616161)
-                                                },
-                                                style = MaterialTheme.typography.labelSmall,
-                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                                                fontWeight = FontWeight.Bold
-                                            )
-                                        }
+
                                     }
                                     
                                     if (task.description.isNotEmpty()) {
@@ -5492,7 +5384,7 @@ fun ManagerTasksDashboard(viewModel: OnSiteViewModel, currentUser: Employee) {
                     ) {
                         Column {
                             Text(task.title, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
-                            Text("Assignee: $empName • Priority: ${task.priority}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("Assignee: $empName", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         Surface(color = Color(0xFFECEFF1), shape = RoundedCornerShape(4.dp)) {
                             Text("In Progress", color = Color(0xFF37474F), style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp))
@@ -5543,7 +5435,6 @@ fun ManagerTasksDashboard(viewModel: OnSiteViewModel, currentUser: Employee) {
         var selectedEmpId by remember { mutableStateOf(eligibleEmployees.firstOrNull()?.uuid ?: "") }
         var taskTitle by remember { mutableStateOf("") }
         var taskDesc by remember { mutableStateOf("") }
-        var selectedPriority by remember { mutableStateOf("Medium") }
         var expandedDropdown by remember { mutableStateOf(false) }
         
         AlertDialog(
@@ -5592,31 +5483,6 @@ fun ManagerTasksDashboard(viewModel: OnSiteViewModel, currentUser: Employee) {
                         modifier = Modifier.fillMaxWidth()
                     )
                     
-                    Text(
-                        text = "Priority Level:",
-                        style = MaterialTheme.typography.bodySmall,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(top = 4.dp)
-                    )
-                    
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        listOf("High", "Medium", "Low").forEach { level ->
-                            OutlinedButton(
-                                onClick = { selectedPriority = level },
-                                modifier = Modifier.weight(1f),
-                                colors = ButtonDefaults.outlinedButtonColors(
-                                    containerColor = if (selectedPriority == level)
-                                        MaterialTheme.colorScheme.primaryContainer
-                                    else Color.Transparent
-                                )
-                            ) {
-                                Text(level, style = MaterialTheme.typography.bodySmall)
-                            }
-                        }
-                    }
                 }
             },
             confirmButton = {
@@ -5627,7 +5493,6 @@ fun ManagerTasksDashboard(viewModel: OnSiteViewModel, currentUser: Employee) {
                                 employeeId = selectedEmpId,
                                 title = taskTitle,
                                 description = taskDesc,
-                                priority = selectedPriority,
                                 assignedBy = currentUser.uuid
                             )
                             showAssignDialog = false
@@ -6224,15 +6089,15 @@ fun getUserDetails(empId: String): UserDetails {
         else -> UserDetails( last_name = "", gender = "", personal_email = "", profile_image = "", designation = "", first_name = "",
             uuid = empId,
             user_uuid = empId,
-            dob = "01-Jan-2003",
-            father_name = "Father Name",
-            mother_name = "Mother Name",
-            permanent_address = "Bhopal, Madhya Pradesh",
-            official_email = "support@guptalakhani.com",
-            contact = "+91 99999 99999",
-            current_address = "+91 99999 88888",
-            middle_name = "01-Jan-2025",
-            blood_group = "O+"
+            dob = "",
+            father_name = "",
+            mother_name = "",
+            permanent_address = "",
+            official_email = "",
+            contact = "",
+            current_address = "",
+            middle_name = "",
+            blood_group = ""
         )
     }
 }
@@ -8331,7 +8196,7 @@ fun LeaveRequestEmployeeScreen(viewModel: OnSiteViewModel, user: Employee) {
                     onClick = {
                         coroutineScope.launch {
                             if (editStart != editingLeaveRequest!!.start_date || editEnd != editingLeaveRequest!!.end_date) {
-                                val hasOverlap = viewModel.checkLeaveOverlap(user.uuid, editStart, editEnd)
+                                val hasOverlap = viewModel.checkLeaveOverlap(user.uuid, editStart, editEnd, editingLeaveRequest!!.uuid)
                                 if (hasOverlap) {
                                     android.widget.Toast.makeText(context, "Leave already exists for this new date range", android.widget.Toast.LENGTH_LONG).show()
                                     return@launch
@@ -8356,7 +8221,7 @@ fun LeaveRequestEmployeeScreen(viewModel: OnSiteViewModel, user: Employee) {
             val todayStr = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date())
             CalendarDialog(
                 initialDate = if (currentVal.isBlank()) todayStr else currentVal,
-                minDate = if (fieldName == "end" && editStart.isNotBlank()) editStart else todayStr,
+                minDate = if (fieldName == "end" && editStart.isNotBlank()) editStart else null,
                 maxDate = if (fieldName == "start" && editEnd.isNotBlank()) editEnd else null,
                 format = "yyyy-MM-dd",
                 onDismissRequest = { editShowCal = null },

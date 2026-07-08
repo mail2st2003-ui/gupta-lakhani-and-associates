@@ -329,7 +329,6 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
                 user_uuid = "EMP-RS-54",
                 title = "Draft Tax Audit Report",
                 description = "Draft the Q1 tax audit report and reconcile the GST ledger balances.",
-                priority = "High",
                 is_completed = false
             )
         )
@@ -338,7 +337,6 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
                 user_uuid = "EMP-RS-54",
                 title = "Prepare IT Returns filing",
                 description = "Extract the corporate balance sheets and fill out Form ITR-6 draft.",
-                priority = "Medium",
                 is_completed = true,
                 
             )
@@ -348,7 +346,6 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
                 user_uuid = "EMP-PP-88",
                 title = "Audit Voucher Verification",
                 description = "Perform physical verification of cash receipts and cross-check ledger transactions.",
-                priority = "High",
                 is_completed = false
             )
         )
@@ -1032,14 +1029,13 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     // Tasks Handlers
-    fun addNewTask(title: String, description: String, priority: String) {
+    fun addNewTask(title: String, description: String) {
         val user = _currentUser.value ?: return
         viewModelScope.launch {
             val task = TodoItem(
                 user_uuid = user.uuid,
                 title = title,
                 description = description,
-                priority = priority,
                 is_completed = false,
                 isSynced = !_isOfflineMode.value,
                 status = "Incomplete",
@@ -1057,13 +1053,12 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    fun assignTaskToEmployee(employeeId: String, title: String, description: String, priority: String, assignedBy: String) {
+    fun assignTaskToEmployee(employeeId: String, title: String, description: String, assignedBy: String) {
         viewModelScope.launch {
             val task = TodoItem(
                 user_uuid = employeeId,
                 title = title,
                 description = description,
-                priority = priority,
                 is_completed = false,
                 status = "Incomplete",
                 is_personal = false,
@@ -1082,14 +1077,13 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    fun addPersonalTodo(title: String, description: String, priority: String) {
+    fun addPersonalTodo(title: String, description: String) {
         val user = _currentUser.value ?: return
         viewModelScope.launch {
             val task = TodoItem(
                 user_uuid = user.uuid,
                 title = title,
                 description = description,
-                priority = priority,
                 is_completed = false,
                 isSynced = !_isOfflineMode.value,
                 status = "Incomplete",
@@ -1443,6 +1437,17 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
             repository.insertEmployees(listOf(user))
             selectUserSession(user)
             fetchAllUsersFromServer()
+            fetchUserProfile(user.uuid)
+        }
+    }
+
+    private suspend fun fetchUserProfile(userUuid: String) {
+        if (_isOfflineMode.value) return
+        try {
+            val profile = com.example.api.ApiClient.authService.getUserProfile(userUuid)
+            repository.saveUserDetails(profile)
+        } catch (e: Exception) {
+            Log.e("OnSiteViewModel", "Failed to fetch user profile", e)
         }
     }
 
@@ -1521,13 +1526,13 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    suspend fun checkLeaveOverlap(userUuid: String, startDateStr: String, endDateStr: String): Boolean {
+    suspend fun checkLeaveOverlap(userUuid: String, startDateStr: String, endDateStr: String, excludeLeaveUuid: String? = null): Boolean {
         if (_isOfflineMode.value) return false
         return try {
             val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
             val startMs = sdf.parse(startDateStr)?.time ?: 0L
             val endMs = sdf.parse(endDateStr)?.time ?: 0L
-            val response = com.example.api.ApiClient.leavesService.checkOverlap(userUuid, startMs, endMs)
+            val response = com.example.api.ApiClient.leavesService.checkOverlap(userUuid, startMs, endMs, excludeLeaveUuid)
             response.overlap
         } catch (e: Exception) {
             android.util.Log.e("OnSiteViewModel", "Failed to check leave overlap", e)

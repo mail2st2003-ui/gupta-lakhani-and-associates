@@ -71,11 +71,12 @@ export class LeavesController {
   checkOverlap = async (req: Request, res: Response): Promise<void> => {
     try {
       const { userUuid } = req.params;
-      const { start, end } = req.query;
+      const { start, end, exclude } = req.query;
       const overlap = await this.leavesService.checkOverlap(
         userUuid as string,
         Number(start) || 0,
-        Number(end) || 0
+        Number(end) || 0,
+        exclude as string
       );
       res.status(200).json({ overlap });
     } catch (error: any) {

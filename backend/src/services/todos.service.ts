@@ -5,7 +5,12 @@ export class TodosService {
   private todosRepository = new TodosRepository();
 
   async getTodosByUser(userUuid: string) {
-    return this.todosRepository.getTodosByUser(userUuid);
+    const todos = await this.todosRepository.getTodosByUser(userUuid);
+    return todos.map((t: any) => ({
+      ...t,
+      is_completed: t.status === 'Complete',
+      timestamp: Date.now()
+    }));
   }
 
   async createTodo(todoData: any) {
@@ -14,12 +19,14 @@ export class TodosService {
       user_uuid: todoData.user_uuid || todoData.userId,
       title: todoData.title,
       description: todoData.description || '',
-      status: todoData.status || 'Pending',
-      timestamp: todoData.timestamp || Date.now(),
-      priority: todoData.priority || 'Medium',
-      is_completed: todoData.is_completed || false
+      status: todoData.status || 'Pending'
     };
-    return this.todosRepository.createTodo(dataToInsert);
+    const result = await this.todosRepository.createTodo(dataToInsert);
+    return {
+      ...result,
+      is_completed: result.status === 'Complete',
+      timestamp: Date.now()
+    };
   }
 
   async updateTodo(uuid: string, updateData: any) {
@@ -27,10 +34,13 @@ export class TodosService {
     if (updateData.title !== undefined) dataToUpdate.title = updateData.title;
     if (updateData.description !== undefined) dataToUpdate.description = updateData.description;
     if (updateData.status !== undefined) dataToUpdate.status = updateData.status;
-    if (updateData.priority !== undefined) dataToUpdate.priority = updateData.priority;
-    if (updateData.is_completed !== undefined) dataToUpdate.is_completed = updateData.is_completed;
 
-    return this.todosRepository.updateTodo(uuid, dataToUpdate);
+    const result = await this.todosRepository.updateTodo(uuid, dataToUpdate);
+    return {
+      ...result,
+      is_completed: result.status === 'Complete',
+      timestamp: Date.now()
+    };
   }
 
   async deleteTodo(uuid: string) {

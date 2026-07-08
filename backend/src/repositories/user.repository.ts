@@ -10,13 +10,8 @@ export class UserRepository {
     if (!details) return baseUser;
 
     return {
-      ...baseUser,
-      first_name: details.first_name ?? null,
-      last_name: details.last_name ?? null,
-      designation: details.designation ?? null,
-      profile_image: details.profile_image ?? null,
-      contact: details.contact ?? null,
-      emergency_contact: details.emergency_contact ?? null
+      ...details,
+      ...baseUser, // ensures baseUser.uuid overrides details.uuid
     };
   }
 

@@ -98,6 +98,12 @@ export class AuthService extends BaseService {
     return newUser;
   }
 
+  async getUserProfile(userUuid: string) {
+    const profile = await this.userRepository.getUserByUuid(userUuid);
+    if (!profile) throw new Error('User not found');
+    return profile;
+  }
+
   async updateProfile(userUuid: string, profileData: any) {
     return this.userRepository.upsertDetailedProfile({
       uuid: profileData.uuid || this.generateUUID(),

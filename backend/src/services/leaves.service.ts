@@ -17,8 +17,8 @@ export class LeavesService {
     });
   }
 
-  async checkOverlap(userUuid: string, startDate: number, endDate: number) {
-    const overlaps = await this.leavesRepository.checkOverlap(userUuid, startDate, endDate);
+  async checkOverlap(userUuid: string, startDate: number, endDate: number, excludeLeaveUuid?: string) {
+    const overlaps = await this.leavesRepository.checkOverlap(userUuid, startDate, endDate, excludeLeaveUuid);
     return overlaps.length > 0;
   }
 

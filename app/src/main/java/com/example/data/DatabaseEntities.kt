@@ -60,7 +60,6 @@ data class TodoItem(
     val user_uuid: String,
     val title: String,
     val description: String,
-    val priority: String, // "High", "Medium", "Low"
     val is_completed: Boolean = false,
     val status: String = "Pending",
     val timestamp: Long = System.currentTimeMillis(),

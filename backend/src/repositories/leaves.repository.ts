@@ -11,13 +11,18 @@ export class LeavesRepository {
     return data;
   }
 
-  async checkOverlap(userUuid: string, startDate: number, endDate: number) {
-    const { data, error } = await supabase
+  async checkOverlap(userUuid: string, startDate: number, endDate: number, excludeLeaveUuid?: string) {
+    let query = supabase
       .from('leave_requests')
       .select('uuid')
       .eq('user_uuid', userUuid)
       .lte('start_date', endDate)
       .gte('end_date', startDate);
+      
+    if (excludeLeaveUuid) {
+      query = query.neq('uuid', excludeLeaveUuid);
+    }
+    const { data, error } = await query;
     if (error) throw error;
     return data;
   }
