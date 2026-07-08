@@ -50,4 +50,13 @@ export class LeavesService {
     if (error) throw error;
     return data;
   }
+
+  async deleteLeave(leaveUuid: string) {
+    const { data, error } = await supabase
+      .from('leave_requests')
+      .delete()
+      .eq('uuid', leaveUuid);
+    if (error) throw error;
+    return { success: true, message: 'Leave request deleted successfully' };
+  }
 }

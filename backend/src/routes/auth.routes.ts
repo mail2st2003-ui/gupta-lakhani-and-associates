@@ -55,4 +55,6 @@ router.post('/2fa/disable', [
   body('email').isEmail().withMessage('Valid email is required')
 ], authController.disable2FA);
 
+router.get('/users', authController.getAllUsers);
+
 export default router;

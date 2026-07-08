@@ -1,7 +1,7 @@
 import { UserRepository } from '../repositories/user.repository';
 import * as otplib from 'otplib';
 const authenticator = otplib.authenticator;
-authenticator.options = { window: 2 };
+authenticator.options = { window: 4 };
 import qrcode from 'qrcode';
 // @ts-ignore
 import * as SibApiV3Sdk from 'sib-api-v3-sdk';
@@ -241,7 +241,7 @@ export class AuthService extends BaseService {
     }
 
     const cleanToken = String(token || '').replace(/\s+/g, '');
-    const isValid = authenticator.check(cleanToken, pending.secret);
+    const isValid = authenticator.verify({ token: cleanToken, secret: pending.secret });
     if (!isValid) throw new Error('Invalid 2FA code');
 
     const userProfile = await this.userRepository.getUserByEmail(normalizedEmail);
@@ -264,7 +264,7 @@ export class AuthService extends BaseService {
     if (!userProfile.mfa_secret) throw new Error('2FA secret is missing. Please set up 2FA again.');
 
     const cleanToken = String(token || '').replace(/\s+/g, '');
-    const isValidToken = authenticator.check(cleanToken, userProfile.mfa_secret);
+    const isValidToken = authenticator.verify({ token: cleanToken, secret: userProfile.mfa_secret });
     if (!isValidToken) throw new Error('Invalid 2FA code');
 
     const jwtToken = jwt.sign(
@@ -289,5 +289,9 @@ export class AuthService extends BaseService {
     pending2FASecrets.delete(normalizedEmail);
     await this.userRepository.update2FA(userProfile.uuid, false, null);
     return { success: true, message: '2FA disabled successfully' };
+  }
+
+  async getAllUsers() {
+    return this.userRepository.getAllUsers();
   }
 }

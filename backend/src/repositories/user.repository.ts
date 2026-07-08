@@ -113,4 +113,13 @@ export class UserRepository {
 
     if (error) throw error;
   }
+
+  async getAllUsers() {
+    const { data, error } = await supabase
+      .from('users')
+      .select('*, user_details(*)');
+
+    if (error) throw error;
+    return (data || []).map((user: any) => this.flattenUserProfile(user));
+  }
 }
