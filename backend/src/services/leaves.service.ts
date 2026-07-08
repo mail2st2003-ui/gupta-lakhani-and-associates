@@ -4,7 +4,17 @@ export class LeavesService {
   private leavesRepository = new LeavesRepository();
 
   async getLeaves(userUuid?: string) {
-    return this.leavesRepository.getLeaves(userUuid);
+    const leaves = await this.leavesRepository.getLeaves(userUuid);
+    return leaves.map((l: any) => {
+      // Safely convert BIGINT timestamp back to YYYY-MM-DD string
+      const start = new Date(Number(l.start_date));
+      const end = new Date(Number(l.end_date));
+      return {
+        ...l,
+        start_date: start.toISOString().split('T')[0],
+        end_date: end.toISOString().split('T')[0]
+      };
+    });
   }
 
   async checkOverlap(userUuid: string, startDate: number, endDate: number) {
@@ -21,7 +31,12 @@ export class LeavesService {
       end_date: new Date(leaveData.end_date || leaveData.endDate).getTime() || 0,
       status: leaveData.status || 'Pending'
     };
-    return this.leavesRepository.createLeave(dbData);
+    const result = await this.leavesRepository.createLeave(dbData);
+    return {
+      ...result,
+      start_date: new Date(Number(result.start_date)).toISOString().split('T')[0],
+      end_date: new Date(Number(result.end_date)).toISOString().split('T')[0]
+    };
   }
 
   async updateLeave(leaveUuid: string, updateData: any) {
@@ -31,7 +46,12 @@ export class LeavesService {
     if (updateData.start_date !== undefined) dbData.start_date = new Date(updateData.start_date).getTime() || 0;
     if (updateData.end_date !== undefined) dbData.end_date = new Date(updateData.end_date).getTime() || 0;
 
-    return this.leavesRepository.updateLeave(leaveUuid, dbData);
+    const result = await this.leavesRepository.updateLeave(leaveUuid, dbData);
+    return {
+      ...result,
+      start_date: new Date(Number(result.start_date)).toISOString().split('T')[0],
+      end_date: new Date(Number(result.end_date)).toISOString().split('T')[0]
+    };
   }
 
   async deleteLeave(leaveUuid: string) {

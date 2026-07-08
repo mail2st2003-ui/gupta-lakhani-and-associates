@@ -239,7 +239,7 @@ export class AuthService extends BaseService {
       throw new Error('2FA setup expired. Please start again.');
     }
 
-    const cleanToken = String(token || '').replace(/\s+/g, '');
+    const cleanToken = String(token || '').replace(/\D/g, '');
     const isValid = authenticator.verify({ token: cleanToken, secret: pending.secret });
     if (!isValid) throw new Error('Invalid 2FA code');
 
@@ -262,7 +262,7 @@ export class AuthService extends BaseService {
     if (!userProfile.is_mfa_enabled) throw new Error('2FA is not enabled');
     if (!userProfile.mfa_secret) throw new Error('2FA secret is missing. Please set up 2FA again.');
 
-    const cleanToken = String(token || '').replace(/\s+/g, '');
+    const cleanToken = String(token || '').replace(/\D/g, '');
     const isValidToken = authenticator.verify({ token: cleanToken, secret: userProfile.mfa_secret });
     if (!isValidToken) throw new Error('Invalid 2FA code');
 
