@@ -67,4 +67,19 @@ export class LeavesController {
       res.status(400).json({ error: error.message });
     }
   };
+
+  checkOverlap = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { userUuid } = req.params;
+      const { start, end } = req.query;
+      const overlap = await this.leavesService.checkOverlap(
+        userUuid as string,
+        Number(start) || 0,
+        Number(end) || 0
+      );
+      res.status(200).json({ overlap });
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  };
 }

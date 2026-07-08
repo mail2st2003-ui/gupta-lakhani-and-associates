@@ -1,0 +1,10 @@
+import { Router } from 'express';
+import { MessagesController } from '../controllers/messages.controller';
+
+const router = Router();
+const messagesController = new MessagesController();
+
+router.post('/', messagesController.sendMessage);
+router.get('/:userUuid/:otherUuid', messagesController.getUserMessages);
+
+export default router;

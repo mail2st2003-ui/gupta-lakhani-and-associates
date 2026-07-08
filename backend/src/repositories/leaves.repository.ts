@@ -11,6 +11,17 @@ export class LeavesRepository {
     return data;
   }
 
+  async checkOverlap(userUuid: string, startDate: number, endDate: number) {
+    const { data, error } = await supabase
+      .from('leave_requests')
+      .select('uuid')
+      .eq('user_uuid', userUuid)
+      .lte('start_date', endDate)
+      .gte('end_date', startDate);
+    if (error) throw error;
+    return data;
+  }
+
   async createLeave(leaveData: any) {
     const { data, error } = await supabase
       .from('leave_requests')
@@ -30,5 +41,14 @@ export class LeavesRepository {
       .single();
     if (error) throw error;
     return data;
+  }
+
+  async deleteLeave(leaveUuid: string) {
+    const { data, error } = await supabase
+      .from('leave_requests')
+      .delete()
+      .eq('uuid', leaveUuid);
+    if (error) throw error;
+    return { success: true, message: 'Leave request deleted successfully' };
   }
 }

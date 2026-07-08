@@ -7909,6 +7909,7 @@ fun LeaveRequestEmployeeScreen(viewModel: OnSiteViewModel, user: Employee) {
     var showCalendarForField by remember { mutableStateOf<String?>(null) }
 
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
 
     Column(
         modifier = Modifier
@@ -8120,23 +8121,30 @@ fun LeaveRequestEmployeeScreen(viewModel: OnSiteViewModel, user: Employee) {
                                 } else if (!applyToAll && selectedCaIds.isEmpty()) {
                                     errorMessage = "Please select at least one CA or choose All CAs."
                                 } else {
-                                    val finalIds = if (applyToAll) listOf("All") else selectedCaIds.toList()
-                                    val finalNames = if (applyToAll) listOf("All CAs") else cas.filter { selectedCaIds.contains(it.uuid) }.map { (it.first_name ?: "") }
-                                    viewModel.submitLeaveRequest(
-                                        reason = reason,
-                                        startDate = startDate,
-                                        endDate = endDate,
-                                        recipientIds = finalIds,
-                                        recipientNames = finalNames
-                                    )
-                                    reason = ""
-                                    startDate = ""
-                                    endDate = ""
-                                    selectedCaIds = emptySet()
-                                    applyToAll = true
-                                    errorMessage = ""
-                                    selectedSection = 1 // Go to applied leave history
-                                    android.widget.Toast.makeText(context, "Leave Application Submitted successfully!", android.widget.Toast.LENGTH_LONG).show()
+                                    coroutineScope.launch {
+                                        val hasOverlap = viewModel.checkLeaveOverlap(user.uuid, startDate, endDate)
+                                        if (hasOverlap) {
+                                            android.widget.Toast.makeText(context, "leave already exists for the date", android.widget.Toast.LENGTH_LONG).show()
+                                        } else {
+                                            val finalIds = if (applyToAll) listOf("All") else selectedCaIds.toList()
+                                            val finalNames = if (applyToAll) listOf("All CAs") else cas.filter { selectedCaIds.contains(it.uuid) }.map { (it.first_name ?: "") }
+                                            viewModel.submitLeaveRequest(
+                                                reason = reason,
+                                                startDate = startDate,
+                                                endDate = endDate,
+                                                recipientIds = finalIds,
+                                                recipientNames = finalNames
+                                            )
+                                            reason = ""
+                                            startDate = ""
+                                            endDate = ""
+                                            selectedCaIds = emptySet()
+                                            applyToAll = true
+                                            errorMessage = ""
+                                            selectedSection = 1 // Go to applied leave history
+                                            android.widget.Toast.makeText(context, "Leave Application Submitted successfully!", android.widget.Toast.LENGTH_LONG).show()
+                                        }
+                                    }
                                 }
                             },
                             enabled = reason.isNotBlank() && startDate.isNotBlank() && endDate.isNotBlank() && endDate > startDate,
@@ -8195,6 +8203,8 @@ fun LeaveRequestEmployeeScreen(viewModel: OnSiteViewModel, user: Employee) {
         }
         CalendarDialog(
             initialDate = if (currentVal.isBlank()) "2026-07-01" else currentVal,
+            minDate = if (fieldName == "endDate" && startDate.isNotBlank()) startDate else null,
+            maxDate = if (fieldName == "startDate" && endDate.isNotBlank()) endDate else null,
             format = "yyyy-MM-dd",
             onDismissRequest = { showCalendarForField = null },
             onDateSelected = { selectedDate ->
@@ -8940,6 +8950,8 @@ fun calculateAge(dobString: String): Int {
 @Composable
 fun CalendarDialog(
     initialDate: String,
+    minDate: String? = null,
+    maxDate: String? = null,
     format: String = "yyyy-MM-dd", // "yyyy-MM-dd" or "dd-MM-yyyy"
     onDismissRequest: () -> Unit,
     onDateSelected: (String) -> Unit
@@ -8957,6 +8969,42 @@ fun CalendarDialog(
             } catch (e: Exception) {
                 // fallback is today
             }
+        }
+    }
+
+    val minCal = remember(minDate, sdf) {
+        if (minDate.isNullOrBlank()) null
+        else {
+            try {
+                val parsed = sdf.parse(minDate)
+                if (parsed != null) {
+                    java.util.Calendar.getInstance().apply {
+                        time = parsed
+                        set(java.util.Calendar.HOUR_OF_DAY, 0)
+                        set(java.util.Calendar.MINUTE, 0)
+                        set(java.util.Calendar.SECOND, 0)
+                        set(java.util.Calendar.MILLISECOND, 0)
+                    }
+                } else null
+            } catch (e: Exception) { null }
+        }
+    }
+
+    val maxCal = remember(maxDate, sdf) {
+        if (maxDate.isNullOrBlank()) null
+        else {
+            try {
+                val parsed = sdf.parse(maxDate)
+                if (parsed != null) {
+                    java.util.Calendar.getInstance().apply {
+                        time = parsed
+                        set(java.util.Calendar.HOUR_OF_DAY, 0)
+                        set(java.util.Calendar.MINUTE, 0)
+                        set(java.util.Calendar.SECOND, 0)
+                        set(java.util.Calendar.MILLISECOND, 0)
+                    }
+                } else null
+            } catch (e: Exception) { null }
         }
     }
 
@@ -9137,6 +9185,18 @@ fun CalendarDialog(
                                     Box(modifier = Modifier.size(32.dp))
                                 } else {
                                     val dayNum = cellIndex - startOffset + 1
+                                    val cellCal = java.util.Calendar.getInstance().apply {
+                                        set(java.util.Calendar.YEAR, selectedYear)
+                                        set(java.util.Calendar.MONTH, selectedMonth)
+                                        set(java.util.Calendar.DAY_OF_MONTH, dayNum)
+                                        set(java.util.Calendar.HOUR_OF_DAY, 0)
+                                        set(java.util.Calendar.MINUTE, 0)
+                                        set(java.util.Calendar.SECOND, 0)
+                                        set(java.util.Calendar.MILLISECOND, 0)
+                                    }
+                                    val isBeforeMinDate = minCal != null && cellCal.before(minCal)
+                                    val isAfterMaxDate = maxCal != null && cellCal.after(maxCal)
+                                    val isDisabled = isBeforeMinDate || isAfterMaxDate
                                     val isSelected = dayNum == selectedDay
                                     Box(
                                         modifier = Modifier
@@ -9146,7 +9206,10 @@ fun CalendarDialog(
                                                 if (isSelected) MaterialTheme.colorScheme.primary
                                                 else Color.Transparent
                                             )
-                                            .clickable { selectedDay = dayNum }
+                                            .then(
+                                                if (isDisabled) Modifier
+                                                else Modifier.clickable { selectedDay = dayNum }
+                                            )
                                             .padding(4.dp),
                                         contentAlignment = Alignment.Center
                                     ) {
@@ -9154,7 +9217,9 @@ fun CalendarDialog(
                                             text = dayNum.toString(),
                                             style = MaterialTheme.typography.bodyMedium,
                                             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                            color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurface
+                                            color = if (isDisabled) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f)
+                                                    else if (isSelected) Color.White 
+                                                    else MaterialTheme.colorScheme.onSurface
                                         )
                                     }
                                 }

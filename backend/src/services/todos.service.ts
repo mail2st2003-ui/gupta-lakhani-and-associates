@@ -14,7 +14,7 @@ export class TodosService {
       user_uuid: todoData.user_uuid || todoData.userId,
       title: todoData.title,
       description: todoData.description || '',
-      status: todoData.status || 'Pending',
+      status: todoData.status || 'Pending'
     };
     return this.todosRepository.createTodo(dataToInsert);
   }

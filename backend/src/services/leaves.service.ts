@@ -1,14 +1,15 @@
-import { supabase } from '../config/supabase';
+import { LeavesRepository } from '../repositories/leaves.repository';
 
 export class LeavesService {
+  private leavesRepository = new LeavesRepository();
+
   async getLeaves(userUuid?: string) {
-    let query = supabase.from('leave_requests').select('*').order('created_at', { ascending: false });
-    if (userUuid) {
-      query = query.eq('user_uuid', userUuid);
-    }
-    const { data, error } = await query;
-    if (error) throw error;
-    return data;
+    return this.leavesRepository.getLeaves(userUuid);
+  }
+
+  async checkOverlap(userUuid: string, startDate: number, endDate: number) {
+    const overlaps = await this.leavesRepository.checkOverlap(userUuid, startDate, endDate);
+    return overlaps.length > 0;
   }
 
   async createLeave(leaveData: any) {
@@ -16,43 +17,24 @@ export class LeavesService {
       uuid: leaveData.uuid || leaveData.id,
       user_uuid: leaveData.user_uuid || leaveData.employeeId,
       reason: leaveData.reason,
-      start_date: leaveData.start_date || leaveData.startDate,
-      end_date: leaveData.end_date || leaveData.endDate,
-      status: leaveData.status || 'Pending',
+      start_date: new Date(leaveData.start_date || leaveData.startDate).getTime() || 0,
+      end_date: new Date(leaveData.end_date || leaveData.endDate).getTime() || 0,
+      status: leaveData.status || 'Pending'
     };
-
-    const { data, error } = await supabase
-      .from('leave_requests')
-      .insert([dbData])
-      .select()
-      .single();
-    if (error) throw error;
-    return data;
+    return this.leavesRepository.createLeave(dbData);
   }
 
   async updateLeave(leaveUuid: string, updateData: any) {
     const dbData: any = {};
     if (updateData.status !== undefined) dbData.status = updateData.status;
     if (updateData.reason !== undefined) dbData.reason = updateData.reason;
-    if (updateData.start_date !== undefined) dbData.start_date = updateData.start_date;
-    if (updateData.end_date !== undefined) dbData.end_date = updateData.end_date;
+    if (updateData.start_date !== undefined) dbData.start_date = new Date(updateData.start_date).getTime() || 0;
+    if (updateData.end_date !== undefined) dbData.end_date = new Date(updateData.end_date).getTime() || 0;
 
-    const { data, error } = await supabase
-      .from('leave_requests')
-      .update(dbData)
-      .eq('uuid', leaveUuid)
-      .select()
-      .single();
-    if (error) throw error;
-    return data;
+    return this.leavesRepository.updateLeave(leaveUuid, dbData);
   }
 
   async deleteLeave(leaveUuid: string) {
-    const { data, error } = await supabase
-      .from('leave_requests')
-      .delete()
-      .eq('uuid', leaveUuid);
-    if (error) throw error;
-    return { success: true, message: 'Leave request deleted successfully' };
+    return this.leavesRepository.deleteLeave(leaveUuid);
   }
 }

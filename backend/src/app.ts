@@ -7,6 +7,7 @@ import authRoutes from './routes/auth.routes';
 import tasksRoutes from './routes/tasks.routes';
 import leavesRoutes from './routes/leaves.routes';
 import todosRoutes from './routes/todos.routes';
+import messagesRoutes from './routes/messages.routes';
 
 dotenv.config();
 
@@ -22,6 +23,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/tasks', tasksRoutes);
 app.use('/api/leaves', leavesRoutes);
 app.use('/api/todos', todosRoutes);
+app.use('/api/messages', messagesRoutes);
 
 // Health check
 app.get('/health', (req, res) => {

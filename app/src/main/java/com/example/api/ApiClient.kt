@@ -16,6 +16,8 @@ import retrofit2.http.POST
 import java.util.concurrent.TimeUnit
 
 // Models
+data class OverlapResponse(val overlap: Boolean)
+
 data class LoginRequest(
     val email: String,
     val password: String
@@ -153,6 +155,7 @@ object ApiClient {
     val tasksService: TasksApiService = retrofit.create(TasksApiService::class.java)
     val todosService: TodosApiService = retrofit.create(TodosApiService::class.java)
     val leavesService: LeavesApiService = retrofit.create(LeavesApiService::class.java)
+    val messagesService: MessagesApiService = retrofit.create(MessagesApiService::class.java)
 }
 
 interface TasksApiService {
@@ -173,9 +176,42 @@ interface TodosApiService {
 
     @POST("api/todos")
     suspend fun createTodo(@Body todo: com.example.data.TodoItem): Any
+
+    @PUT("api/todos/{id}")
+    suspend fun updateTodo(@Path("id") id: String, @Body todo: com.example.data.TodoItem): Any
+
+    @retrofit2.http.DELETE("api/todos/{id}")
+    suspend fun deleteTodo(@Path("id") id: String): Any
 }
 
 interface LeavesApiService {
     @POST("api/leaves")
     suspend fun createLeave(@Body leave: com.example.data.LeaveRequest): Any
+
+    @PUT("api/leaves/{id}")
+    suspend fun updateLeave(@Path("id") id: String, @Body leave: com.example.data.LeaveRequest): Any
+
+    @retrofit2.http.DELETE("api/leaves/{id}")
+    suspend fun deleteLeave(@Path("id") id: String): Any
+
+    @GET("api/leaves/user/{userUuid}")
+    suspend fun getUserLeaves(@Path("userUuid") userUuid: String): List<com.example.data.LeaveRequest>
+
+    @GET("api/leaves/check-overlap/{userUuid}")
+    suspend fun checkOverlap(
+        @Path("userUuid") userUuid: String,
+        @Query("start") start: Long,
+        @Query("end") end: Long
+    ): OverlapResponse
+}
+
+interface MessagesApiService {
+    @POST("api/messages")
+    suspend fun sendMessage(@Body message: com.example.data.Message): Any
+
+    @GET("api/messages/{userUuid}/{otherUuid}")
+    suspend fun getUserMessages(
+        @Path("userUuid") userUuid: String,
+        @Path("otherUuid") otherUuid: String
+    ): List<com.example.data.Message>
 }

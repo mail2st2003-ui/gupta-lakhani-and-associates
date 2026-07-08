@@ -1066,6 +1066,7 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
             try {
                 if (!_isOfflineMode.value) {
                     com.example.api.ApiClient.todosService.createTodo(task)
+                    fetchRemoteTasksForUser(user.uuid)
                 }
                 repository.insertTodoItem(task)
             } catch (e: Exception) {
@@ -1084,7 +1085,14 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
             )
             repository.updateTodoItem(updatedTask)
 
-            if (_isOfflineMode.value) {
+            if (!_isOfflineMode.value) {
+                try {
+                    com.example.api.ApiClient.todosService.updateTodo(updatedTask.uuid, updatedTask)
+                    fetchRemoteTasksForUser(updatedTask.user_uuid)
+                } catch (e: Exception) {
+                    _syncStatus.value = "Failed to sync status update. Saved offline."
+                }
+            } else {
                 _syncStatus.value = "Pending Sync (Offline Mode)"
             }
         }
@@ -1100,15 +1108,31 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
             )
             repository.updateTodoItem(updatedTask)
 
-            if (_isOfflineMode.value) {
+            if (!_isOfflineMode.value) {
+                try {
+                    com.example.api.ApiClient.todosService.updateTodo(updatedTask.uuid, updatedTask)
+                    fetchRemoteTasksForUser(updatedTask.user_uuid)
+                } catch (e: Exception) {
+                    _syncStatus.value = "Failed to sync status update. Saved offline."
+                }
+            } else {
                 _syncStatus.value = "Pending Sync (Offline Mode)"
             }
         }
     }
 
     fun deleteTask(id: String) {
+        val user = _currentUser.value ?: return
         viewModelScope.launch {
             repository.deleteTodoItem(id)
+            if (!_isOfflineMode.value) {
+                try {
+                    com.example.api.ApiClient.todosService.deleteTodo(id)
+                    fetchRemoteTasksForUser(user.uuid)
+                } catch (e: Exception) {
+                    _syncStatus.value = "Failed to sync delete."
+                }
+            }
         }
     }
 
@@ -1120,6 +1144,12 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
                 status = "Complete"
             )
             repository.updateTodoItem(updatedTask)
+            if (!_isOfflineMode.value) {
+                try {
+                    com.example.api.ApiClient.todosService.updateTodo(updatedTask.uuid, updatedTask)
+                    fetchRemoteTasksForUser(updatedTask.user_uuid)
+                } catch (e: Exception) {}
+            }
         }
     }
 
@@ -1131,6 +1161,12 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
                 status = "Incomplete"
             )
             repository.updateTodoItem(updatedTask)
+            if (!_isOfflineMode.value) {
+                try {
+                    com.example.api.ApiClient.todosService.updateTodo(updatedTask.uuid, updatedTask)
+                    fetchRemoteTasksForUser(updatedTask.user_uuid)
+                } catch (e: Exception) {}
+            }
         }
     }
 
@@ -1217,7 +1253,8 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
                 _syncStatus.value = "Pending Sync (Offline Mode)"
             } else {
                 try {
-                    syncAllWithCloud()
+                    com.example.api.ApiClient.messagesService.sendMessage(msg)
+                    fetchRemoteMessages(user.uuid, recipientId)
                 } catch (e: Exception) {
                     Log.e("OnSiteViewModel", "Instant direct message sync failed", e)
                 }
@@ -1401,12 +1438,50 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    private suspend fun fetchRemoteLeavesForUser(userUuid: String) {
+        if (_isOfflineMode.value) return
+        try {
+            val remoteLeaves = com.example.api.ApiClient.leavesService.getUserLeaves(userUuid)
+            remoteLeaves.forEach { leave ->
+                repository.insertLeaveRequest(leave.copy(isSynced = true))
+            }
+        } catch (e: Exception) {
+            Log.e("OnSiteViewModel", "Failed to fetch remote leaves", e)
+        }
+    }
+
+    private suspend fun fetchRemoteMessages(userUuid: String, otherUuid: String) {
+        if (_isOfflineMode.value) return
+        try {
+            val remoteMsgs = com.example.api.ApiClient.messagesService.getUserMessages(userUuid, otherUuid)
+            remoteMsgs.forEach { msg ->
+                repository.insertMessage(msg.copy(isSynced = true))
+            }
+        } catch (e: Exception) {
+            Log.e("OnSiteViewModel", "Failed to fetch remote messages", e)
+        }
+    }
+
     fun deleteEmployee(employeeId: String) {
         viewModelScope.launch {
             repository.deleteEmployee(employeeId)
             if (_currentUser.value?.uuid == employeeId) {
                 logoutSession()
             }
+        }
+    }
+
+    suspend fun checkLeaveOverlap(userUuid: String, startDateStr: String, endDateStr: String): Boolean {
+        if (_isOfflineMode.value) return false
+        return try {
+            val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
+            val startMs = sdf.parse(startDateStr)?.time ?: 0L
+            val endMs = sdf.parse(endDateStr)?.time ?: 0L
+            val response = com.example.api.ApiClient.leavesService.checkOverlap(userUuid, startMs, endMs)
+            response.overlap
+        } catch (e: Exception) {
+            android.util.Log.e("OnSiteViewModel", "Failed to check leave overlap", e)
+            false
         }
     }
 
@@ -1430,6 +1505,7 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
             try {
                 if (!_isOfflineMode.value) {
                     com.example.api.ApiClient.leavesService.createLeave(request)
+                    fetchRemoteLeavesForUser(user.uuid)
                 }
                 repository.insertLeaveRequest(request)
             } catch (e: Exception) {
@@ -1443,6 +1519,12 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch {
             val target = allLeaveRequests.value.find { it.uuid == requestId } ?: return@launch
             repository.updateLeaveRequestStatus(requestId, "Accepted", comment, approverName)
+            if (!_isOfflineMode.value) {
+                try {
+                    com.example.api.ApiClient.leavesService.updateLeave(requestId, target.copy(status = "Accepted", comment = comment))
+                    fetchRemoteLeavesForUser(target.user_uuid)
+                } catch (e: Exception) {}
+            }
         }
     }
 
@@ -1450,6 +1532,12 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch {
             val target = allLeaveRequests.value.find { it.uuid == requestId } ?: return@launch
             repository.updateLeaveRequestStatus(requestId, "Rejected", comment, approverName)
+            if (!_isOfflineMode.value) {
+                try {
+                    com.example.api.ApiClient.leavesService.updateLeave(requestId, target.copy(status = "Rejected", comment = comment))
+                    fetchRemoteLeavesForUser(target.user_uuid)
+                } catch (e: Exception) {}
+            }
         }
     }
 
