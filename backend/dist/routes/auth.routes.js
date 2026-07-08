@@ -11,6 +11,8 @@ router.post('/register', [
     (0, express_validator_1.body)('full_name').notEmpty().withMessage('Full name is required'),
     (0, express_validator_1.body)('otp').notEmpty().withMessage('OTP is required')
 ], authController.register);
+router.put('/profile/:userUuid', authController.updateProfile);
+router.put('/profile/:userUuid/photo', authController.updateProfileImage);
 router.post('/login', [
     (0, express_validator_1.body)('email').isEmail().withMessage('Valid email is required'),
     (0, express_validator_1.body)('password').notEmpty().withMessage('Password is required')
@@ -40,4 +42,7 @@ router.post('/2fa/login', [
     (0, express_validator_1.body)('password').notEmpty().withMessage('Password is required'),
     (0, express_validator_1.body)('token').notEmpty().withMessage('Token is required')
 ], authController.verify2FALogin);
+router.post('/2fa/disable', [
+    (0, express_validator_1.body)('email').isEmail().withMessage('Valid email is required')
+], authController.disable2FA);
 exports.default = router;

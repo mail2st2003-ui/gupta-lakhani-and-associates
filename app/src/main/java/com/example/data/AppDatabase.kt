@@ -13,18 +13,29 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface AppDao {
-    // Employees
+    @Query("SELECT * FROM tasks")
+    fun getAllTasksFlow(): Flow<List<Task>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertTask(task: Task)
+
+    @Query("SELECT * FROM task_details")
+    fun getAllTaskDetailsFlow(): Flow<List<TaskDetails>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertTaskDetails(details: TaskDetails)
+
     @Query("SELECT * FROM employees")
     fun getAllEmployeesFlow(): Flow<List<Employee>>
 
     @Query("SELECT * FROM employees")
     suspend fun getAllEmployeesDirect(): List<Employee>
 
-    @Query("SELECT * FROM employees WHERE id = :id")
-    suspend fun getEmployeeById(id: String): Employee?
+    @Query("SELECT * FROM employees WHERE uuid = :uuid")
+    suspend fun getEmployeeById(uuid: String): Employee?
 
-    @Query("DELETE FROM employees WHERE id = :id")
-    suspend fun deleteEmployeeById(id: String)
+    @Query("DELETE FROM employees WHERE uuid = :uuid")
+    suspend fun deleteEmployeeById(uuid: String)
 
     @Query("DELETE FROM employees")
     suspend fun clearEmployeesTable()
@@ -35,15 +46,14 @@ interface AppDao {
     @Update
     suspend fun updateEmployee(employee: Employee)
 
-    // Attendance Logs
     @Query("SELECT * FROM attendance_logs ORDER BY timestamp DESC")
     fun getAllAttendanceLogsFlow(): Flow<List<AttendanceLog>>
 
     @Query("SELECT * FROM attendance_logs ORDER BY timestamp DESC")
     suspend fun getAllAttendanceLogsDirect(): List<AttendanceLog>
 
-    @Query("SELECT * FROM attendance_logs WHERE employeeId = :employeeId ORDER BY timestamp DESC")
-    fun getAttendanceLogsForEmployeeFlow(employeeId: String): Flow<List<AttendanceLog>>
+    @Query("SELECT * FROM attendance_logs WHERE user_uuid = :user_uuid ORDER BY timestamp DESC")
+    fun getAttendanceLogsForEmployeeFlow(user_uuid: String): Flow<List<AttendanceLog>>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAttendanceLog(log: AttendanceLog): Long
@@ -51,15 +61,17 @@ interface AppDao {
     @Query("UPDATE attendance_logs SET isSynced = 1 WHERE isSynced = 0")
     suspend fun markAttendanceLogsSynced()
 
-    // Todo Items
-    @Query("SELECT * FROM todo_items ORDER BY timestamp DESC")
+    @Query("SELECT * FROM todos ORDER BY timestamp DESC")
     fun getAllTodoItemsFlow(): Flow<List<TodoItem>>
 
-    @Query("SELECT * FROM todo_items ORDER BY timestamp DESC")
+    @Query("SELECT * FROM todos ORDER BY timestamp DESC")
     suspend fun getAllTodoItemsDirect(): List<TodoItem>
 
-    @Query("SELECT * FROM todo_items WHERE employeeId = :employeeId ORDER BY timestamp DESC")
-    fun getTodoItemsForEmployeeFlow(employeeId: String): Flow<List<TodoItem>>
+    @Query("SELECT * FROM todos WHERE user_uuid = :user_uuid ORDER BY timestamp DESC")
+    fun getTodoItemsForEmployeeFlow(user_uuid: String): Flow<List<TodoItem>>
+
+    @Query("SELECT * FROM todos WHERE user_uuid = :user_uuid ORDER BY timestamp DESC")
+    suspend fun getTodoItemsForEmployeeDirect(user_uuid: String): List<TodoItem>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertTodoItem(item: TodoItem)
@@ -67,13 +79,12 @@ interface AppDao {
     @Update
     suspend fun updateTodoItem(item: TodoItem)
 
-    @Query("DELETE FROM todo_items WHERE id = :id")
-    suspend fun deleteTodoItemById(id: String)
+    @Query("DELETE FROM todos WHERE uuid = :uuid")
+    suspend fun deleteTodoItemById(uuid: String)
 
-    @Query("UPDATE todo_items SET isSynced = 1 WHERE isSynced = 0")
+    @Query("UPDATE todos SET isSynced = 1 WHERE isSynced = 0")
     suspend fun markTodoItemsSynced()
 
-    // Messages
     @Query("SELECT * FROM messages ORDER BY timestamp ASC")
     fun getAllMessagesFlow(): Flow<List<Message>>
 
@@ -86,7 +97,6 @@ interface AppDao {
     @Query("UPDATE messages SET isSynced = 1 WHERE isSynced = 0")
     suspend fun markMessagesSynced()
 
-    // System Alerts
     @Query("SELECT * FROM system_alerts ORDER BY timestamp DESC")
     fun getAllAlertsFlow(): Flow<List<SystemAlert>>
 
@@ -96,10 +106,9 @@ interface AppDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAlert(alert: SystemAlert)
 
-    @Query("UPDATE system_alerts SET isRead = 1 WHERE id = :id")
-    suspend fun markAlertAsRead(id: String)
+    @Query("UPDATE system_alerts SET is_read = 1 WHERE uuid = :uuid")
+    suspend fun markAlertAsRead(uuid: String)
 
-    // Leave Requests
     @Query("SELECT * FROM leave_requests ORDER BY timestamp DESC")
     fun getAllLeaveRequestsFlow(): Flow<List<LeaveRequest>>
 
@@ -112,30 +121,31 @@ interface AppDao {
     @Update
     suspend fun updateLeaveRequest(request: LeaveRequest)
 
-    // Summons
-    @Query("SELECT * FROM summons WHERE staffId = :staffId AND isCleared = 0")
-    fun getActiveSummonsForStaffFlow(staffId: String): Flow<List<SummonAlert>>
+    @Query("DELETE FROM leave_requests WHERE uuid = :uuid")
+    suspend fun deleteLeaveRequestById(uuid: String)
+
+    @Query("SELECT * FROM summons WHERE staff_uuid = :staff_uuid AND is_cleared = 0")
+    fun getActiveSummonsForStaffFlow(staff_uuid: String): Flow<List<SummonAlert>>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertSummon(summon: SummonAlert)
 
-    @Query("UPDATE summons SET isCleared = 1 WHERE staffId = :staffId")
-    suspend fun clearSummonsForStaff(staffId: String)
+    @Query("UPDATE summons SET is_cleared = 1 WHERE staff_uuid = :staff_uuid")
+    suspend fun clearSummonsForStaff(staff_uuid: String)
 
-    // Detailed Profile queries
-    @Query("SELECT * FROM detailed_profiles WHERE id = :id")
-    fun getDetailedProfileFlow(id: String): Flow<DetailedProfile?>
+    @Query("SELECT * FROM user_details WHERE user_uuid = :user_uuid")
+    fun getUserDetailsFlow(user_uuid: String): Flow<UserDetails?>
 
-    @Query("SELECT * FROM detailed_profiles")
-    suspend fun getAllDetailedProfilesDirect(): List<DetailedProfile>
+    @Query("SELECT * FROM user_details")
+    suspend fun getAllUserDetailsDirect(): List<UserDetails>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertDetailedProfile(profile: DetailedProfile)
+    suspend fun insertUserDetails(profile: UserDetails)
 }
 
 @Database(
-    entities = [Employee::class, AttendanceLog::class, TodoItem::class, Message::class, SystemAlert::class, LeaveRequest::class, SummonAlert::class, DetailedProfile::class],
-    version = 9,
+    entities = [Employee::class, UserDetails::class, AttendanceLog::class, TodoItem::class, Message::class, SummonAlert::class, SystemAlert::class, LeaveRequest::class, Task::class, TaskDetails::class],
+    version = 13,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -161,110 +171,127 @@ abstract class AppDatabase : RoomDatabase() {
     }
 }
 
-class OnSiteRepository(private val appDao: AppDao) {
-    val allEmployees: Flow<List<Employee>> = appDao.getAllEmployeesFlow()
-    val allAttendanceLogs: Flow<List<AttendanceLog>> = appDao.getAllAttendanceLogsFlow()
-    val allTodoItems: Flow<List<TodoItem>> = appDao.getAllTodoItemsFlow()
-    val allMessages: Flow<List<Message>> = appDao.getAllMessagesFlow()
-    val allAlerts: Flow<List<SystemAlert>> = appDao.getAllAlertsFlow()
-    val allLeaveRequests: Flow<List<LeaveRequest>> = appDao.getAllLeaveRequestsFlow()
+class OnSiteRepository(private val dao: AppDao) {
+    val allTasks = dao.getAllTasksFlow()
+    val allTaskDetails = dao.getAllTaskDetailsFlow()
+    val allEmployees: Flow<List<Employee>> = dao.getAllEmployeesFlow()
+    val allAttendanceLogs: Flow<List<AttendanceLog>> = dao.getAllAttendanceLogsFlow()
+    val allTodoItems: Flow<List<TodoItem>> = dao.getAllTodoItemsFlow()
+    val allMessages: Flow<List<Message>> = dao.getAllMessagesFlow()
+    val allAlerts: Flow<List<SystemAlert>> = dao.getAllAlertsFlow()
+    val allLeaveRequests: Flow<List<LeaveRequest>> = dao.getAllLeaveRequestsFlow()
 
-    suspend fun getAllEmployeesDirect(): List<Employee> = appDao.getAllEmployeesDirect()
-    suspend fun getAllAttendanceLogsDirect(): List<AttendanceLog> = appDao.getAllAttendanceLogsDirect()
-    suspend fun getAllTodoItemsDirect(): List<TodoItem> = appDao.getAllTodoItemsDirect()
-    suspend fun getAllMessagesDirect(): List<Message> = appDao.getAllMessagesDirect()
-    suspend fun getAllAlertsDirect(): List<SystemAlert> = appDao.getAllAlertsDirect()
-    suspend fun getAllLeaveRequestsDirect(): List<LeaveRequest> = appDao.getAllLeaveRequestsDirect()
-    suspend fun getAllDetailedProfilesDirect(): List<DetailedProfile> = appDao.getAllDetailedProfilesDirect()
+    suspend fun insertTask(task: Task) = dao.insertTask(task)
+    suspend fun insertTaskDetails(details: TaskDetails) = dao.insertTaskDetails(details)
+    suspend fun getAllEmployeesDirect(): List<Employee> = dao.getAllEmployeesDirect()
+    suspend fun getEmployeeById(uuid: String): Employee? = dao.getEmployeeById(uuid)
+    suspend fun getAllAttendanceLogsDirect(): List<AttendanceLog> = dao.getAllAttendanceLogsDirect()
+    suspend fun getAllTodoItemsDirect(): List<TodoItem> = dao.getAllTodoItemsDirect()
+    suspend fun getAllMessagesDirect(): List<Message> = dao.getAllMessagesDirect()
+    suspend fun getAllAlertsDirect(): List<SystemAlert> = dao.getAllAlertsDirect()
+    suspend fun getAllLeaveRequestsDirect(): List<LeaveRequest> = dao.getAllLeaveRequestsDirect()
+    suspend fun getAllUserDetailsDirect(): List<UserDetails> = dao.getAllUserDetailsDirect()
 
-    fun getAttendanceLogsForEmployee(employeeId: String): Flow<List<AttendanceLog>> {
-        return appDao.getAttendanceLogsForEmployeeFlow(employeeId)
+    fun getAttendanceLogsForEmployee(user_uuid: String): Flow<List<AttendanceLog>> {
+        return dao.getAttendanceLogsForEmployeeFlow(user_uuid)
     }
 
-    fun getTodoItemsForEmployee(employeeId: String): Flow<List<TodoItem>> {
-        return appDao.getTodoItemsForEmployeeFlow(employeeId)
+    fun getTodoItemsForEmployee(user_uuid: String): Flow<List<TodoItem>> {
+        return dao.getTodoItemsForEmployeeFlow(user_uuid)
+    }
+    
+    suspend fun getTodoItemsForEmployeeDirect(user_uuid: String): List<TodoItem> {
+        return dao.getTodoItemsForEmployeeDirect(user_uuid)
     }
 
-    suspend fun getEmployeeById(id: String): Employee? {
-        return appDao.getEmployeeById(id)
+    fun getActiveSummonsForStaff(user_uuid: String): Flow<List<SummonAlert>> {
+        return dao.getActiveSummonsForStaffFlow(user_uuid)
     }
 
-    suspend fun deleteEmployeeById(id: String) {
-        appDao.deleteEmployeeById(id)
-    }
-
-    suspend fun clearEmployeesTable() {
-        appDao.clearEmployeesTable()
+    suspend fun insertEmployee(employee: Employee) {
+        dao.insertEmployees(listOf(employee))
     }
 
     suspend fun insertEmployees(employees: List<Employee>) {
-        appDao.insertEmployees(employees)
+        dao.insertEmployees(employees)
     }
 
     suspend fun updateEmployee(employee: Employee) {
-        appDao.updateEmployee(employee)
+        dao.updateEmployee(employee)
     }
 
-    suspend fun insertAttendanceLog(log: AttendanceLog): Long {
-        return appDao.insertAttendanceLog(log)
+    suspend fun deleteEmployee(user_uuid: String) {
+        dao.deleteEmployeeById(user_uuid)
+    }
+
+    suspend fun insertAttendanceLog(log: AttendanceLog) {
+        dao.insertAttendanceLog(log)
     }
 
     suspend fun insertTodoItem(item: TodoItem) {
-        appDao.insertTodoItem(item)
+        dao.insertTodoItem(item)
     }
 
     suspend fun updateTodoItem(item: TodoItem) {
-        appDao.updateTodoItem(item)
+        dao.updateTodoItem(item)
     }
 
-    suspend fun deleteTodoItemById(id: String) {
-        appDao.deleteTodoItemById(id)
+    suspend fun deleteTodoItem(uuid: String) {
+        dao.deleteTodoItemById(uuid)
     }
 
     suspend fun insertMessage(message: Message) {
-        appDao.insertMessage(message)
+        dao.insertMessage(message)
     }
 
     suspend fun insertAlert(alert: SystemAlert) {
-        appDao.insertAlert(alert)
+        dao.insertAlert(alert)
     }
 
-    suspend fun markAlertAsRead(id: String) {
-        appDao.markAlertAsRead(id)
+    suspend fun markAlertAsRead(uuid: String) {
+        dao.markAlertAsRead(uuid)
     }
 
     suspend fun insertLeaveRequest(request: LeaveRequest) {
-        appDao.insertLeaveRequest(request)
+        dao.insertLeaveRequest(request)
     }
 
-    suspend fun updateLeaveRequest(request: LeaveRequest) {
-        appDao.updateLeaveRequest(request)
+    suspend fun updateLeaveRequestStatus(uuid: String, status: String, comment: String = "", manager_uuid: String = "") {
+        val request = dao.getAllLeaveRequestsDirect().find { it.uuid == uuid }
+        if (request != null) {
+            dao.updateLeaveRequest(request.copy(status = status, comment = comment, manager_uuid = manager_uuid))
+        }
     }
 
-    suspend fun syncOfflineData() {
-        // Simulates syncing with a cloud back-end by updating the 'isSynced' fields
-        appDao.markAttendanceLogsSynced()
-        appDao.markTodoItemsSynced()
-        appDao.markMessagesSynced()
-    }
-
-    fun getActiveSummonsForStaff(staffId: String): Flow<List<SummonAlert>> {
-        return appDao.getActiveSummonsForStaffFlow(staffId)
+    suspend fun deleteLeaveRequest(uuid: String) {
+        dao.deleteLeaveRequestById(uuid)
     }
 
     suspend fun insertSummon(summon: SummonAlert) {
-        appDao.insertSummon(summon)
+        dao.insertSummon(summon)
     }
 
-    suspend fun clearSummonsForStaff(staffId: String) {
-        appDao.clearSummonsForStaff(staffId)
+    suspend fun clearSummonAlert(uuid: String) {
+        dao.clearSummonsForStaff(uuid)
     }
 
-    fun getDetailedProfileFlow(id: String): Flow<DetailedProfile?> {
-        return appDao.getDetailedProfileFlow(id)
+    fun getUserDetails(user_uuid: String): Flow<UserDetails?> {
+        return dao.getUserDetailsFlow(user_uuid)
     }
 
-    suspend fun insertDetailedProfile(profile: DetailedProfile) {
-        appDao.insertDetailedProfile(profile)
+    suspend fun saveUserDetails(profile: UserDetails) {
+        dao.insertUserDetails(profile)
+    }
+
+    suspend fun markAttendanceLogsSynced() {
+        dao.markAttendanceLogsSynced()
+    }
+
+    suspend fun markTodoItemsSynced() {
+        dao.markTodoItemsSynced()
+    }
+
+    suspend fun markMessagesSynced() {
+        dao.markMessagesSynced()
     }
 }

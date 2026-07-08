@@ -1,8 +1,26 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.UserRepository = void 0;
+const crypto_1 = require("crypto");
 const supabase_1 = require("../config/supabase");
 class UserRepository {
+    flattenUserProfile(user) {
+        if (!user)
+            return user;
+        const details = Array.isArray(user.user_details) ? user.user_details[0] : user.user_details;
+        const { user_details, ...baseUser } = user;
+        if (!details)
+            return baseUser;
+        return {
+            ...baseUser,
+            first_name: details.first_name ?? null,
+            last_name: details.last_name ?? null,
+            designation: details.designation ?? null,
+            profile_image: details.profile_image ?? null,
+            contact: details.contact ?? null,
+            emergency_contact: details.emergency_contact ?? null
+        };
+    }
     async createUser(userData) {
         const { data, error } = await supabase_1.supabase
             .from('users')
@@ -13,29 +31,29 @@ class UserRepository {
             throw error;
         return data;
     }
-    async getUserByAuthId(authId) {
+    async getUserByUuid(uuid) {
         const { data, error } = await supabase_1.supabase
             .from('users')
-            .select('*')
-            .eq('auth_id', authId)
+            .select('*, user_details(*)')
+            .eq('uuid', uuid)
             .single();
         if (error && error.code !== 'PGRST116')
-            throw error; // PGRST116 is not found
-        return data;
+            throw error;
+        return this.flattenUserProfile(data);
     }
     async getUserByEmail(email) {
         const { data, error } = await supabase_1.supabase
             .from('users')
-            .select('*')
+            .select('*, user_details(*)')
             .eq('email', email)
             .single();
         if (error && error.code !== 'PGRST116')
             throw error;
-        return data;
+        return this.flattenUserProfile(data);
     }
     async createDetailedProfile(profileData) {
         const { data, error } = await supabase_1.supabase
-            .from('detailed_profiles')
+            .from('user_details')
             .insert([profileData])
             .select()
             .single();
@@ -43,14 +61,49 @@ class UserRepository {
             throw error;
         return data;
     }
-    async update2FA(authId, secret, isEnabled) {
+    async upsertDetailedProfile(profileData) {
+        const { data, error } = await supabase_1.supabase
+            .from('user_details')
+            .upsert([profileData], { onConflict: 'user_uuid' })
+            .select()
+            .single();
+        if (error)
+            throw error;
+        return data;
+    }
+    async updateProfileImage(userUuid, profileImage) {
+        const { data: updated, error: updateError } = await supabase_1.supabase
+            .from('user_details')
+            .update({ profile_image: profileImage })
+            .eq('user_uuid', userUuid)
+            .select()
+            .maybeSingle();
+        if (updateError)
+            throw updateError;
+        if (updated)
+            return updated;
+        const { data, error } = await supabase_1.supabase
+            .from('user_details')
+            .insert([{
+                uuid: (0, crypto_1.randomUUID)(),
+                user_uuid: userUuid,
+                profile_image: profileImage
+            }])
+            .select()
+            .single();
+        if (error)
+            throw error;
+        return data;
+    }
+    async update2FA(uuid, isEnabled, secret = null) {
+        const updateData = { is_mfa_enabled: isEnabled };
+        if (isEnabled || secret === null) {
+            updateData.mfa_secret = secret;
+        }
         const { error } = await supabase_1.supabase
             .from('users')
-            .update({
-            totp_secret: secret,
-            is_2fa_enabled: isEnabled
-        })
-            .eq('auth_id', authId);
+            .update(updateData)
+            .eq('uuid', uuid);
         if (error)
             throw error;
     }

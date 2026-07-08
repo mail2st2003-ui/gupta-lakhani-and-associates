@@ -1,23 +1,81 @@
 -- Users Table
 CREATE TABLE public.users (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    uuid UUID PRIMARY KEY,
     auth_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
-    full_name TEXT NOT NULL,
     email TEXT UNIQUE NOT NULL,
-    phone TEXT,
-    role TEXT DEFAULT 'Staff',
-    department TEXT,
+    password TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT 'Staff',
+    password_updated_at TIMESTAMP WITH TIME ZONE,
+    is_mfa_enabled BOOLEAN DEFAULT FALSE,
+    mfa_secret TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc', now()),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc', now())
+);
+
+-- User Details Table
+CREATE TABLE public.user_details (
+    uuid UUID PRIMARY KEY,
+    user_uuid UUID REFERENCES public.users(uuid) ON DELETE CASCADE UNIQUE,
+    first_name TEXT,
+    middle_name TEXT,
+    last_name TEXT,
+    father_name TEXT,
+    mother_name TEXT,
+    dob TEXT,
+    gender TEXT,
+    blood_group TEXT,
+    contact TEXT,
+    official_email TEXT,
+    personal_email TEXT,
+    permanent_address TEXT,
+    current_address TEXT,
+    emergency_contact TEXT,
     profile_image TEXT,
-    custom_id TEXT UNIQUE,
+    designation TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc', now()),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc', now())
+);
+
+-- Todos Table (Personal tasks)
+CREATE TABLE public.todos (
+    uuid UUID PRIMARY KEY,
+    user_uuid UUID REFERENCES public.users(uuid) ON DELETE CASCADE,
+    title TEXT NOT NULL,
+    description TEXT,
+    priority TEXT DEFAULT 'Medium',
+    status TEXT DEFAULT 'Pending',
+    is_completed BOOLEAN DEFAULT false,
+    timestamp BIGINT NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc', now()),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc', now())
+);
+
+-- Tasks Table
+CREATE TABLE public.tasks (
+    uuid UUID PRIMARY KEY,
+    created_by_user_uuid UUID REFERENCES public.users(uuid) ON DELETE CASCADE,
+    assigned_to_user_uuid UUID REFERENCES public.users(uuid) ON DELETE CASCADE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc', now()),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc', now())
+);
+
+-- Task Details Table
+CREATE TABLE public.task_details (
+    uuid UUID PRIMARY KEY,
+    task_uuid UUID REFERENCES public.tasks(uuid) ON DELETE CASCADE,
+    title TEXT NOT NULL,
+    description TEXT,
+    status TEXT DEFAULT 'Pending',
+    priority TEXT DEFAULT 'Medium',
+    due_date BIGINT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc', now()),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc', now())
 );
 
 -- Attendance Logs Table
 CREATE TABLE public.attendance_logs (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    employee_id UUID REFERENCES public.users(id) ON DELETE CASCADE,
-    employee_name TEXT,
+    uuid UUID PRIMARY KEY,
+    user_uuid UUID REFERENCES public.users(uuid) ON DELETE CASCADE,
     type TEXT NOT NULL,
     status TEXT NOT NULL,
     latitude DOUBLE PRECISION,
@@ -26,67 +84,37 @@ CREATE TABLE public.attendance_logs (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc', now())
 );
 
--- Todo Items Table
-CREATE TABLE public.todo_items (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    employee_id UUID REFERENCES public.users(id) ON DELETE CASCADE,
-    title TEXT NOT NULL,
-    description TEXT,
-    priority TEXT DEFAULT 'Medium',
-    status TEXT DEFAULT 'Pending',
-    is_completed BOOLEAN DEFAULT false,
-    is_approved BOOLEAN DEFAULT false,
-    timestamp BIGINT NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc', now()),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc', now())
-);
-
 -- Messages Table
 CREATE TABLE public.messages (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    sender_id UUID REFERENCES public.users(id) ON DELETE CASCADE,
-    sender_name TEXT,
-    sender_role TEXT,
-    recipient_id TEXT NOT NULL,
+    uuid UUID PRIMARY KEY,
+    sender_uuid UUID REFERENCES public.users(uuid) ON DELETE CASCADE,
+    recipient_uuid TEXT NOT NULL,
     content TEXT NOT NULL,
     is_encrypted BOOLEAN DEFAULT false,
     timestamp BIGINT NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc', now())
 );
 
--- System Alerts Table
-CREATE TABLE public.system_alerts (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    title TEXT NOT NULL,
-    content TEXT NOT NULL,
-    priority TEXT DEFAULT 'Info',
-    sender_name TEXT,
-    timestamp BIGINT NOT NULL,
-    is_read BOOLEAN DEFAULT false,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc', now())
-);
-
 -- Leave Requests Table
 CREATE TABLE public.leave_requests (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    employee_id UUID REFERENCES public.users(id) ON DELETE CASCADE,
-    employee_name TEXT,
+    uuid UUID PRIMARY KEY,
+    user_uuid UUID REFERENCES public.users(uuid) ON DELETE CASCADE,
     start_date BIGINT NOT NULL,
     end_date BIGINT NOT NULL,
     reason TEXT NOT NULL,
     status TEXT DEFAULT 'Pending',
     timestamp BIGINT NOT NULL,
+    manager_uuid UUID REFERENCES public.users(uuid) ON DELETE SET NULL,
+    comment TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc', now()),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc', now())
 );
 
 -- Summons Table
 CREATE TABLE public.summons (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    staff_id UUID REFERENCES public.users(id) ON DELETE CASCADE,
-    staff_name TEXT,
-    summoner_id UUID REFERENCES public.users(id) ON DELETE CASCADE,
-    summoner_name TEXT,
+    uuid UUID PRIMARY KEY,
+    staff_uuid UUID REFERENCES public.users(uuid) ON DELETE CASCADE,
+    summoner_uuid UUID REFERENCES public.users(uuid) ON DELETE CASCADE,
     location TEXT NOT NULL,
     urgency TEXT DEFAULT 'Normal',
     is_cleared BOOLEAN DEFAULT false,
@@ -94,18 +122,13 @@ CREATE TABLE public.summons (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc', now())
 );
 
--- Detailed Profiles Table
-CREATE TABLE public.detailed_profiles (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id UUID REFERENCES public.users(id) ON DELETE CASCADE UNIQUE,
-    age INTEGER,
-    dob TEXT,
-    fathers_name TEXT,
-    mothers_name TEXT,
-    address TEXT,
-    emergency_contact TEXT,
-    doj TEXT,
-    blood_group TEXT,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc', now()),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc', now())
+-- System Alerts Table
+CREATE TABLE public.system_alerts (
+    uuid UUID PRIMARY KEY,
+    title TEXT NOT NULL,
+    content TEXT NOT NULL,
+    priority TEXT DEFAULT 'Info',
+    timestamp BIGINT NOT NULL,
+    is_read BOOLEAN DEFAULT false,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc', now())
 );

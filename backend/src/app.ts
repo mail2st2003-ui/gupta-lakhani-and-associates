@@ -6,12 +6,14 @@ import dotenv from 'dotenv';
 import authRoutes from './routes/auth.routes';
 import tasksRoutes from './routes/tasks.routes';
 import leavesRoutes from './routes/leaves.routes';
+import todosRoutes from './routes/todos.routes';
+import messagesRoutes from './routes/messages.routes';
 
 dotenv.config();
 
 const app = express();
 
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
 app.use(cors());
 app.use(helmet());
 app.use(morgan('dev'));
@@ -20,6 +22,8 @@ app.use(morgan('dev'));
 app.use('/api/auth', authRoutes);
 app.use('/api/tasks', tasksRoutes);
 app.use('/api/leaves', leavesRoutes);
+app.use('/api/todos', todosRoutes);
+app.use('/api/messages', messagesRoutes);
 
 // Health check
 app.get('/health', (req, res) => {

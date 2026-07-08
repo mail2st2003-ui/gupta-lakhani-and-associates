@@ -8,10 +8,16 @@ import retrofit2.converter.moshi.MoshiConverterFactory
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import retrofit2.http.Body
+import retrofit2.http.GET
+import retrofit2.http.PUT
+import retrofit2.http.Path
+import retrofit2.http.Query
 import retrofit2.http.POST
 import java.util.concurrent.TimeUnit
 
 // Models
+data class OverlapResponse(val overlap: Boolean)
+
 data class LoginRequest(
     val email: String,
     val password: String
@@ -30,6 +36,7 @@ data class Verify2FASetupRequest(val email: String, val token: String)
 data class Verify2FASetupResponse(val success: Boolean)
 data class Verify2FALoginRequest(val email: String, val password: String, val token: String)
 data class Verify2FALoginResponse(val user: Employee, val session: SessionData)
+data class ProfileImageRequest(val profile_image: String?)
 
 data class SessionData(
     val access_token: String,
@@ -40,16 +47,20 @@ data class RegisterRequest(
     val email: String,
     val password: String,
     val full_name: String,
+    val first_name: String,
+    val middle_name: String?,
+    val last_name: String,
     val role: String,
-    val department: String,
+    val designation: String,
     val custom_id: String?,
     val otp: String,
     val age: Int?,
     val dob: String?,
-    val fathers_name: String?,
-    val mothers_name: String?,
-    val address: String?,
-    val phone: String?,
+    val father_name: String?,
+    val mother_name: String?,
+    val permanent_address: String?,
+    val current_address: String?,
+    val contact: String?,
     val emergency_contact: String?,
     val doj: String?,
     val blood_group: String?
@@ -67,6 +78,12 @@ interface AuthApiService {
 
     @POST("api/auth/register")
     suspend fun register(@Body request: RegisterRequest): RegisterResponse
+
+    @PUT("api/auth/profile/{userUuid}")
+    suspend fun updateProfile(@Path("userUuid") userUuid: String, @Body profile: com.example.data.UserDetails): Any
+
+    @PUT("api/auth/profile/{userUuid}/photo")
+    suspend fun updateProfileImage(@Path("userUuid") userUuid: String, @Body request: ProfileImageRequest): Any
 
     @POST("api/auth/send-otp")
     suspend fun sendOtp(@Body request: SendOtpRequest): SendOtpResponse
@@ -88,6 +105,12 @@ interface AuthApiService {
 
     @POST("api/auth/2fa/disable")
     suspend fun disable2FA(@Body request: Setup2FARequest): Verify2FASetupResponse
+
+    @GET("api/auth/users")
+    suspend fun getAllUsers(): List<com.example.data.Employee>
+
+    @GET("api/auth/profile/{userUuid}")
+    suspend fun getUserProfile(@Path("userUuid") userUuid: String): com.example.data.UserDetails
 }
 
 data class SendOtpRequest(val email: String)
@@ -133,15 +156,66 @@ object ApiClient {
 
     val authService: AuthApiService = retrofit.create(AuthApiService::class.java)
     val tasksService: TasksApiService = retrofit.create(TasksApiService::class.java)
+    val todosService: TodosApiService = retrofit.create(TodosApiService::class.java)
     val leavesService: LeavesApiService = retrofit.create(LeavesApiService::class.java)
+    val messagesService: MessagesApiService = retrofit.create(MessagesApiService::class.java)
 }
 
 interface TasksApiService {
+    @GET("api/tasks")
+    suspend fun getTasks(
+        @Query("employee_id") employeeId: String
+    ): List<com.example.data.TodoItem>
+
     @POST("api/tasks")
     suspend fun createTask(@Body task: com.example.data.TodoItem): Any
+}
+
+interface TodosApiService {
+    @GET("api/todos/user/{userUuid}")
+    suspend fun getUserTodos(
+        @Path("userUuid") userUuid: String
+    ): List<com.example.data.TodoItem>
+
+    @POST("api/todos")
+    suspend fun createTodo(@Body todo: com.example.data.TodoItem): Any
+
+    @PUT("api/todos/{id}")
+    suspend fun updateTodo(@Path("id") id: String, @Body todo: com.example.data.TodoItem): Any
+
+    @retrofit2.http.DELETE("api/todos/{id}")
+    suspend fun deleteTodo(@Path("id") id: String): Any
 }
 
 interface LeavesApiService {
     @POST("api/leaves")
     suspend fun createLeave(@Body leave: com.example.data.LeaveRequest): Any
+
+    @PUT("api/leaves/{id}")
+    suspend fun updateLeave(@Path("id") id: String, @Body leave: com.example.data.LeaveRequest): Any
+
+    @retrofit2.http.DELETE("api/leaves/{id}")
+    suspend fun deleteLeave(@Path("id") id: String): Any
+
+    @GET("api/leaves/user/{userUuid}")
+    suspend fun getUserLeaves(@Path("userUuid") userUuid: String): List<com.example.data.LeaveRequest>
+
+    @GET("api/leaves/check-overlap/{userUuid}")
+    suspend fun checkOverlap(
+        @Path("userUuid") userUuid: String,
+        @Query("start") start: Long,
+        @Query("end") end: Long,
+        @Query("exclude") exclude: String? = null
+    ): OverlapResponse
+}
+
+interface MessagesApiService {
+    @POST("api/messages")
+    suspend fun sendMessage(@Body message: com.example.data.Message): Any
+
+    @GET("api/messages/{userUuid}/{otherUuid}")
+    suspend fun getUserMessages(
+        @Path("userUuid") userUuid: String,
+        @Path("otherUuid") otherUuid: String
+    ): List<com.example.data.Message>
 }

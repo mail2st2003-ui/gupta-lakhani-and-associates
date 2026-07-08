@@ -12,6 +12,10 @@ router.post('/register', [
   body('otp').notEmpty().withMessage('OTP is required')
 ], authController.register);
 
+router.get('/profile/:userUuid', authController.getUserProfile);
+router.put('/profile/:userUuid', authController.updateProfile);
+router.put('/profile/:userUuid/photo', authController.updateProfileImage);
+
 router.post('/login', [
   body('email').isEmail().withMessage('Valid email is required'),
   body('password').notEmpty().withMessage('Password is required')
@@ -51,5 +55,7 @@ router.post('/2fa/login', [
 router.post('/2fa/disable', [
   body('email').isEmail().withMessage('Valid email is required')
 ], authController.disable2FA);
+
+router.get('/users', authController.getAllUsers);
 
 export default router;

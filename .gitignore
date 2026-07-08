@@ -22,3 +22,14 @@ OpenJDK*.tar.gz
 jdk-17.0.10+7/
 build_and_install.sh
 install_android_sdk.sh
+
+# Compiled backend output (never commit, deploy from source)
+/backend/dist/
+
+# Temporary fix/debug scripts
+*.py
+
+# Internal prompt and test files
+/prompt/
+/backend/test_*.js
+/backend/update_*.js

@@ -13,7 +13,7 @@ import com.example.data.SystemAlert
 import com.example.data.TodoItem
 import com.example.data.LeaveRequest
 import com.example.data.SummonAlert
-import com.example.data.DetailedProfile
+import com.example.data.UserDetails
 import com.example.data.CloudSyncHelper
 import android.util.Log
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -40,6 +40,9 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
     private val repository: OnSiteRepository
 
     // Current Session / Role State
+    private val _sessionExpiredEvent = kotlinx.coroutines.flow.MutableSharedFlow<Unit>()
+    val sessionExpiredEvent = _sessionExpiredEvent.asSharedFlow()
+
     private val _currentUser = MutableStateFlow<Employee?>(null)
     val currentUser: StateFlow<Employee?> = _currentUser.asStateFlow()
 
@@ -197,7 +200,7 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
 
         activeSummons = _currentUser.flatMapLatest { user ->
             if (user != null) {
-                repository.getActiveSummonsForStaff(user.id)
+                repository.getActiveSummonsForStaff(user.uuid)
             } else {
                 flowOf(emptyList())
             }
@@ -210,7 +213,7 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
         // FlatMap current employee's specific lists
         currentEmployeeTodoItems = _currentUser.flatMapLatest { user ->
             if (user != null) {
-                repository.getTodoItemsForEmployee(user.id)
+                repository.getTodoItemsForEmployee(user.uuid)
             } else {
                 flowOf(emptyList())
             }
@@ -222,7 +225,7 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
 
         currentEmployeeLogs = _currentUser.flatMapLatest { user ->
             if (user != null) {
-                repository.getAttendanceLogsForEmployee(user.id)
+                repository.getAttendanceLogsForEmployee(user.uuid)
             } else {
                 flowOf(emptyList())
             }
@@ -250,8 +253,23 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
         // Restore user session if saved
         viewModelScope.launch {
             val savedUserId = themePrefs.getString("logged_in_user_id", null)
+            val savedUserDetailsJson = themePrefs.getString("logged_in_user_details", null)
             if (savedUserId != null) {
                 var employee = repository.getEmployeeById(savedUserId)
+                
+                if (employee == null && savedUserDetailsJson != null) {
+                    try {
+                        val moshi = com.squareup.moshi.Moshi.Builder().add(com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory()).build()
+                        val adapter = moshi.adapter(Employee::class.java)
+                        employee = adapter.fromJson(savedUserDetailsJson)
+                        if (employee != null) {
+                            repository.insertEmployees(listOf(employee))
+                        }
+                    } catch (e: Exception) {
+                        android.util.Log.e("OnSiteViewModel", "Failed to parse saved user details", e)
+                    }
+                }
+                
                 if (employee == null) {
                     for (i in 1..15) {
                         kotlinx.coroutines.delay(200)
@@ -259,9 +277,14 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
                         if (employee != null) break
                     }
                 }
+                
                 if (employee != null) {
                     _currentUser.value = employee
                     _isManager.value = (employee.role == "Manager")
+                    // Removed bulk fetching on session restore
+                } else {
+                    themePrefs.edit().remove("logged_in_user_id").remove("logged_in_user_details").apply()
+                    _sessionExpiredEvent.emit(Unit)
                 }
             }
         }
@@ -303,40 +326,37 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
         // Seed initial tasks
         repository.insertTodoItem(
             TodoItem(
-                employeeId = "EMP-RS-54",
+                user_uuid = "EMP-RS-54",
                 title = "Draft Tax Audit Report",
                 description = "Draft the Q1 tax audit report and reconcile the GST ledger balances.",
-                priority = "High",
-                isCompleted = false
+                is_completed = false
             )
         )
         repository.insertTodoItem(
             TodoItem(
-                employeeId = "EMP-RS-54",
+                user_uuid = "EMP-RS-54",
                 title = "Prepare IT Returns filing",
                 description = "Extract the corporate balance sheets and fill out Form ITR-6 draft.",
-                priority = "Medium",
-                isCompleted = true,
-                isApproved = true
+                is_completed = true,
+                
             )
         )
         repository.insertTodoItem(
             TodoItem(
-                employeeId = "EMP-PP-88",
+                user_uuid = "EMP-PP-88",
                 title = "Audit Voucher Verification",
                 description = "Perform physical verification of cash receipts and cross-check ledger transactions.",
-                priority = "High",
-                isCompleted = false
+                is_completed = false
             )
         )
 
         // Seed initial secure chat messages
         repository.insertMessage(
             Message(
-                senderId = "CA-GU-01",
-                senderName = "CA Anuj Gupta",
-                senderRole = "Manager",
-                recipientId = "Group",
+                sender_uuid = "CA-GU-01",
+                
+                
+                recipient_uuid = "Group",
                 content = encryptMessage("Good morning team! Please complete your assigned audit checklists and make sure to check in upon arriving at the office."),
                 timestamp = System.currentTimeMillis() - 3600000,
                 isEncrypted = true
@@ -350,8 +370,7 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
         // Rahul Sharma previous shifts
         repository.insertAttendanceLog(
             AttendanceLog(
-                employeeId = "EMP-RS-54",
-                employeeName = "Rahul Sharma",
+                user_uuid = "EMP-RS-54",
                 timestamp = now - oneDayMillis - 3600000 * 2, // Yesterday at ~18:00
                 type = "Check-Out",
                 status = "On-Site",
@@ -362,8 +381,7 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
         )
         repository.insertAttendanceLog(
             AttendanceLog(
-                employeeId = "EMP-RS-54",
-                employeeName = "Rahul Sharma",
+                user_uuid = "EMP-RS-54",
                 timestamp = now - oneDayMillis - 3600000 * 11, // Yesterday at ~09:00
                 type = "Check-In",
                 status = "On-Site",
@@ -374,8 +392,7 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
         )
         repository.insertAttendanceLog(
             AttendanceLog(
-                employeeId = "EMP-RS-54",
-                employeeName = "Rahul Sharma",
+                user_uuid = "EMP-RS-54",
                 timestamp = now - (oneDayMillis * 2) - 3600000 * 3, // Day before yesterday afternoon
                 type = "Check-Out",
                 status = "On-Site",
@@ -386,8 +403,7 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
         )
         repository.insertAttendanceLog(
             AttendanceLog(
-                employeeId = "EMP-RS-54",
-                employeeName = "Rahul Sharma",
+                user_uuid = "EMP-RS-54",
                 timestamp = now - (oneDayMillis * 2) - 3600000 * 12, // Day before yesterday morning
                 type = "Check-In",
                 status = "On-Site",
@@ -400,8 +416,7 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
         // Priya Patel previous shifts
         repository.insertAttendanceLog(
             AttendanceLog(
-                employeeId = "EMP-PP-88",
-                employeeName = "Priya Patel",
+                user_uuid = "EMP-PP-88",
                 timestamp = now - oneDayMillis - 3600000 * 2,
                 type = "Check-Out",
                 status = "On-Site",
@@ -412,8 +427,7 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
         )
         repository.insertAttendanceLog(
             AttendanceLog(
-                employeeId = "EMP-PP-88",
-                employeeName = "Priya Patel",
+                user_uuid = "EMP-PP-88",
                 timestamp = now - oneDayMillis - 3600000 * 11,
                 type = "Check-In",
                 status = "On-Site",
@@ -426,8 +440,7 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
         // Vikram Singh previous shifts
         repository.insertAttendanceLog(
             AttendanceLog(
-                employeeId = "EMP-VS-22",
-                employeeName = "Vikram Singh",
+                user_uuid = "EMP-VS-22",
                 timestamp = now - oneDayMillis - 3600000 * 1,
                 type = "Check-Out",
                 status = "On-Site",
@@ -438,8 +451,7 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
         )
         repository.insertAttendanceLog(
             AttendanceLog(
-                employeeId = "EMP-VS-22",
-                employeeName = "Vikram Singh",
+                user_uuid = "EMP-VS-22",
                 timestamp = now - oneDayMillis - 3600000 * 10,
                 type = "Check-In",
                 status = "On-Site",
@@ -452,8 +464,7 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
         // Rohan Mehta previous shifts
         repository.insertAttendanceLog(
             AttendanceLog(
-                employeeId = "EMP-RM-19",
-                employeeName = "Rohan Mehta",
+                user_uuid = "EMP-RM-19",
                 timestamp = now - oneDayMillis - 3600000 * 3,
                 type = "Check-Out",
                 status = "On-Site",
@@ -464,8 +475,7 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
         )
         repository.insertAttendanceLog(
             AttendanceLog(
-                employeeId = "EMP-RM-19",
-                employeeName = "Rohan Mehta",
+                user_uuid = "EMP-RM-19",
                 timestamp = now - oneDayMillis - 3600000 * 11,
                 type = "Check-In",
                 status = "On-Site",
@@ -478,8 +488,7 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
         // Seed historical 2025 shifts for Rahul Sharma (around 365 days ago)
         repository.insertAttendanceLog(
             AttendanceLog(
-                employeeId = "EMP-RS-54",
-                employeeName = "Rahul Sharma",
+                user_uuid = "EMP-RS-54",
                 timestamp = now - (oneDayMillis * 365) - 3600000 * 2, // 2025 afternoon
                 type = "Check-Out",
                 status = "On-Site",
@@ -490,8 +499,7 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
         )
         repository.insertAttendanceLog(
             AttendanceLog(
-                employeeId = "EMP-RS-54",
-                employeeName = "Rahul Sharma",
+                user_uuid = "EMP-RS-54",
                 timestamp = now - (oneDayMillis * 365) - 3600000 * 11, // 2025 morning
                 type = "Check-In",
                 status = "On-Site",
@@ -504,8 +512,7 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
         // Seed historical 2024 shifts for Rahul Sharma (around 730 days ago)
         repository.insertAttendanceLog(
             AttendanceLog(
-                employeeId = "EMP-RS-54",
-                employeeName = "Rahul Sharma",
+                user_uuid = "EMP-RS-54",
                 timestamp = now - (oneDayMillis * 730) - 3600000 * 3, // 2024 afternoon
                 type = "Check-Out",
                 status = "On-Site",
@@ -516,8 +523,7 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
         )
         repository.insertAttendanceLog(
             AttendanceLog(
-                employeeId = "EMP-RS-54",
-                employeeName = "Rahul Sharma",
+                user_uuid = "EMP-RS-54",
                 timestamp = now - (oneDayMillis * 730) - 3600000 * 12, // 2024 morning
                 type = "Check-In",
                 status = "On-Site",
@@ -532,13 +538,22 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
     fun selectUserSession(employee: Employee) {
         _currentUser.value = employee
         _isManager.value = (employee.role == "Manager")
-        themePrefs.edit().putString("logged_in_user_id", employee.id).apply()
+        try {
+            val moshi = com.squareup.moshi.Moshi.Builder().add(com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory()).build()
+            val json = moshi.adapter(Employee::class.java).toJson(employee)
+            themePrefs.edit()
+                .putString("logged_in_user_id", employee.uuid)
+                .putString("logged_in_user_details", json)
+                .apply()
+        } catch (e: Exception) {
+            themePrefs.edit().putString("logged_in_user_id", employee.uuid).apply()
+        }
     }
 
     fun logoutSession() {
         _currentUser.value = null
         _isManager.value = false
-        themePrefs.edit().remove("logged_in_user_id").apply()
+        themePrefs.edit().remove("logged_in_user_id").remove("logged_in_user_details").apply()
     }
 
     // Offline / Sync Toggles
@@ -558,7 +573,7 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
             _syncStatus.value = "Syncing..."
             try {
                 syncAllWithCloud()
-                repository.syncOfflineData()
+                
                 _syncStatus.value = "Synced"
             } catch (e: Exception) {
                 _syncStatus.value = "Sync Failed: ${e.localizedMessage}"
@@ -589,17 +604,17 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
             if (kvdbRemote != null || firestoreRemote != null) {
                 val mergedMap = mutableMapOf<String, Employee>()
                 allSources.forEach { emp ->
-                    val existing = mergedMap[emp.id]
+                    val existing = mergedMap[emp.uuid]
                     if (existing == null) {
-                        mergedMap[emp.id] = emp
+                        mergedMap[emp.uuid] = emp
                     } else {
-                        val existingTime = existing.lastCheckedIn ?: 0L
-                        val empTime = emp.lastCheckedIn ?: 0L
+                        val existingTime = 0L ?: 0L
+                        val empTime = 0L ?: 0L
                         if (empTime > existingTime) {
-                            mergedMap[emp.id] = emp
+                            mergedMap[emp.uuid] = emp
                         } else if (empTime == existingTime) {
-                            if (emp.profilePhoto != null && existing.profilePhoto == null) {
-                                mergedMap[emp.id] = emp
+                            if (emp.profile_image != null && existing.profile_image == null) {
+                                mergedMap[emp.uuid] = emp
                             }
                         }
                     }
@@ -637,7 +652,7 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
             if (firestoreRemote != null) allSources.addAll(firestoreRemote)
 
             if (kvdbRemote != null || firestoreRemote != null) {
-                val merged = allSources.distinctBy { "${it.employeeId}_${it.timestamp}_${it.type}" }
+                val merged = allSources.distinctBy { "${it.user_uuid}_${it.timestamp}_${it.type}" }
                 if (merged.size != local.size || merged != local) {
                     merged.forEach { log ->
                         repository.insertAttendanceLog(log)
@@ -674,12 +689,12 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
             if (kvdbRemote != null || firestoreRemote != null) {
                 val mergedMap = mutableMapOf<String, TodoItem>()
                 allSources.forEach { item ->
-                    val key = "${item.employeeId}_${item.timestamp}_${item.title}"
+                    val key = "${item.user_uuid}_${item.timestamp}_${item.title}"
                     val existing = mergedMap[key]
                     if (existing == null) {
                         mergedMap[key] = item
                     } else {
-                        if (item.isCompleted || item.isApproved || item.status == "Complete") {
+                        if (item.is_completed || item.status == "Complete" || item.status == "Approved") {
                             mergedMap[key] = item
                         }
                     }
@@ -719,7 +734,7 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
             if (firestoreRemote != null) allSources.addAll(firestoreRemote)
 
             if (kvdbRemote != null || firestoreRemote != null) {
-                val merged = allSources.distinctBy { "${it.senderId}_${it.timestamp}" }
+                val merged = allSources.distinctBy { "${it.sender_uuid}_${it.timestamp}" }
                 if (merged.size != local.size || merged != local) {
                     merged.forEach { msg ->
                         repository.insertMessage(msg)
@@ -752,9 +767,9 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
             allSources.addAll(local)
             if (kvdbRemote != null) allSources.addAll(kvdbRemote)
             if (firestoreRemote != null) allSources.addAll(firestoreRemote)
+            val merged = allSources.distinctBy { it.uuid }
 
             if (kvdbRemote != null || firestoreRemote != null) {
-                val merged = allSources.distinctBy { "${it.senderName}_${it.timestamp}" }
                 if (merged.size != local.size || merged != local) {
                     merged.forEach { alert ->
                         repository.insertAlert(alert)
@@ -791,7 +806,7 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
             if (kvdbRemote != null || firestoreRemote != null) {
                 val mergedMap = mutableMapOf<String, LeaveRequest>()
                 allSources.forEach { req ->
-                    val key = "${req.employeeId}_${req.timestamp}"
+                    val key = "${req.user_uuid}_${req.timestamp}"
                     val existing = mergedMap[key]
                     if (existing == null) {
                         mergedMap[key] = req
@@ -822,35 +837,35 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
 
         // 7. Detailed Profiles
         try {
-            val local = repository.getAllDetailedProfilesDirect()
-            val kvdbRemote = CloudSyncHelper.fetchList("detailed_profiles", DetailedProfile::class.java)
+            val local = repository.getAllUserDetailsDirect()
+            val kvdbRemote = CloudSyncHelper.fetchList("detailed_profiles", UserDetails::class.java)
             val firestoreRemote = if (_isFirestoreEnabled.value) {
-                com.example.data.FirestoreSyncHelper.fetchList("detailed_profiles", DetailedProfile::class.java)
+                com.example.data.FirestoreSyncHelper.fetchList("detailed_profiles", UserDetails::class.java)
             } else {
                 null
             }
 
-            val allSources = mutableListOf<DetailedProfile>()
+            val allSources = mutableListOf<UserDetails>()
             allSources.addAll(local)
             if (kvdbRemote != null) allSources.addAll(kvdbRemote)
             if (firestoreRemote != null) allSources.addAll(firestoreRemote)
 
             if (kvdbRemote != null || firestoreRemote != null) {
-                val mergedMap = mutableMapOf<String, DetailedProfile>()
+                val mergedMap = mutableMapOf<String, UserDetails>()
                 allSources.forEach { profile ->
-                    mergedMap[profile.id] = profile
+                    mergedMap[profile.uuid] = profile
                 }
                 val mergedList = mergedMap.values.toList()
                 if (mergedList.size != local.size || mergedList != local) {
                     mergedList.forEach { profile ->
-                        repository.insertDetailedProfile(profile)
+                        repository.saveUserDetails(profile)
                     }
                 }
                 if (kvdbRemote != null) {
-                    CloudSyncHelper.saveList("detailed_profiles", mergedList, DetailedProfile::class.java)
+                    CloudSyncHelper.saveList("detailed_profiles", mergedList, UserDetails::class.java)
                 }
                 if (_isFirestoreEnabled.value) {
-                    val ok = com.example.data.FirestoreSyncHelper.saveList("detailed_profiles", mergedList, DetailedProfile::class.java)
+                    val ok = com.example.data.FirestoreSyncHelper.saveList("detailed_profiles", mergedList, UserDetails::class.java)
                     if (!ok) firestoreSuccess = false
                 }
             }
@@ -922,8 +937,7 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
 
         viewModelScope.launch {
             val log = AttendanceLog(
-                employeeId = user.id,
-                employeeName = user.name,
+                user_uuid = user.uuid,
                 timestamp = System.currentTimeMillis(),
                 type = type,
                 status = status,
@@ -942,8 +956,6 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
             }
 
             val updatedEmployee = user.copy(
-                status = newStatus,
-                lastCheckedIn = if (type == "Check-In") System.currentTimeMillis() else user.lastCheckedIn
             )
             repository.updateEmployee(updatedEmployee)
             _currentUser.value = updatedEmployee
@@ -969,18 +981,7 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
                 content = content,
                 timestamp = System.currentTimeMillis(),
                 priority = "Urgent",
-                isRead = false,
-                senderName = _currentUser.value?.name ?: "Management"
-            )
-
-            repository.insertAlert(alert)
-            _activeBannerAlert.value = alert
-
-            // Push an actual local Android status bar notification!
-            NotificationHelper.postUrgentAlertNotification(
-                getApplication(),
-                title,
-                content
+                is_read = false
             )
         }
     }
@@ -1000,8 +1001,8 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
                 content = content,
                 timestamp = System.currentTimeMillis(),
                 priority = priority,
-                isRead = false,
-                senderName = _currentUser.value?.name ?: "Anonymous",
+                is_read = false,
+                
                 attachmentType = attachmentType,
                 attachmentData = attachmentData,
                 attachmentName = attachmentName,
@@ -1018,7 +1019,7 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
     // Simulate Missed Check-Ins (Push Notification simulation)
     fun simulateMissedCheckin() {
         viewModelScope.launch {
-            val targetEmployee = _currentUser.value?.name ?: "Sarah Chen"
+            val targetEmployee = _currentUser.value?.first_name ?: "Sarah Chen"
             NotificationHelper.postMissedCheckinNotification(
                 getApplication(),
                 targetEmployee,
@@ -1028,18 +1029,41 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     // Tasks Handlers
-    fun addNewTask(title: String, description: String, priority: String) {
+    fun addNewTask(title: String, description: String) {
         val user = _currentUser.value ?: return
         viewModelScope.launch {
             val task = TodoItem(
-                employeeId = user.id,
+                user_uuid = user.uuid,
                 title = title,
                 description = description,
-                priority = priority,
-                isCompleted = false,
+                is_completed = false,
                 isSynced = !_isOfflineMode.value,
                 status = "Incomplete",
-                isPersonal = false
+                is_personal = true,
+            )
+            try {
+                if (!_isOfflineMode.value) {
+                    com.example.api.ApiClient.todosService.createTodo(task)
+                }
+                repository.insertTodoItem(task)
+            } catch (e: Exception) {
+                repository.insertTodoItem(task.copy(isSynced = false))
+                _syncStatus.value = "Failed to sync task. Saved offline."
+            }
+        }
+    }
+
+    fun assignTaskToEmployee(employeeId: String, title: String, description: String, assignedBy: String) {
+        viewModelScope.launch {
+            val task = TodoItem(
+                user_uuid = employeeId,
+                title = title,
+                description = description,
+                is_completed = false,
+                status = "Incomplete",
+                is_personal = false,
+                assigned_by = assignedBy,
+                isSynced = !_isOfflineMode.value
             )
             try {
                 if (!_isOfflineMode.value) {
@@ -1053,48 +1077,23 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    fun assignTaskToEmployee(employeeId: String, title: String, description: String, priority: String, assignedBy: String) {
-        viewModelScope.launch {
-            val task = TodoItem(
-                employeeId = employeeId,
-                title = title,
-                description = description,
-                priority = priority,
-                isCompleted = false,
-                isApproved = false,
-                isSynced = !_isOfflineMode.value,
-                status = "Incomplete",
-                isPersonal = false,
-                assignedBy = assignedBy
-            )
-            try {
-                if (!_isOfflineMode.value) {
-                    com.example.api.ApiClient.tasksService.createTask(task)
-                }
-                repository.insertTodoItem(task)
-            } catch (e: Exception) {
-                repository.insertTodoItem(task.copy(isSynced = false))
-                _syncStatus.value = "Failed to sync task. Saved offline."
-            }
-        }
-    }
-
-    fun addPersonalTodo(title: String, description: String, priority: String) {
+    fun addPersonalTodo(title: String, description: String) {
         val user = _currentUser.value ?: return
         viewModelScope.launch {
             val task = TodoItem(
-                employeeId = user.id,
+                user_uuid = user.uuid,
                 title = title,
                 description = description,
-                priority = priority,
-                isCompleted = false,
+                is_completed = false,
                 isSynced = !_isOfflineMode.value,
                 status = "Incomplete",
-                isPersonal = true
+                is_personal = true,
             )
             try {
                 if (!_isOfflineMode.value) {
-                    com.example.api.ApiClient.tasksService.createTask(task)
+                    com.example.api.ApiClient.todosService.createTodo(task)
+                    fetchRemoteAssignedTasksForUser(user.uuid)
+                    fetchRemoteTodosForUser(user.uuid)
                 }
                 repository.insertTodoItem(task)
             } catch (e: Exception) {
@@ -1108,12 +1107,20 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch {
             val updatedTask = task.copy(
                 status = status,
-                isCompleted = (status == "Complete"),
+                is_completed = (status == "Complete"),
                 isSynced = !_isOfflineMode.value
             )
             repository.updateTodoItem(updatedTask)
 
-            if (_isOfflineMode.value) {
+            if (!_isOfflineMode.value) {
+                try {
+                    com.example.api.ApiClient.todosService.updateTodo(updatedTask.uuid, updatedTask)
+                    fetchRemoteAssignedTasksForUser(updatedTask.user_uuid)
+                    fetchRemoteTodosForUser(updatedTask.user_uuid)
+                } catch (e: Exception) {
+                    _syncStatus.value = "Failed to sync status update. Saved offline."
+                }
+            } else {
                 _syncStatus.value = "Pending Sync (Offline Mode)"
             }
         }
@@ -1121,23 +1128,41 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
 
     fun toggleTaskCompletion(task: TodoItem) {
         viewModelScope.launch {
-            val newStatus = if (task.isCompleted) "Incomplete" else "Complete"
+            val newStatus = if (task.is_completed) "Incomplete" else "Complete"
             val updatedTask = task.copy(
-                isCompleted = !task.isCompleted,
+                is_completed = !task.is_completed,
                 status = newStatus,
                 isSynced = !_isOfflineMode.value
             )
             repository.updateTodoItem(updatedTask)
 
-            if (_isOfflineMode.value) {
+            if (!_isOfflineMode.value) {
+                try {
+                    com.example.api.ApiClient.todosService.updateTodo(updatedTask.uuid, updatedTask)
+                    fetchRemoteAssignedTasksForUser(updatedTask.user_uuid)
+                    fetchRemoteTodosForUser(updatedTask.user_uuid)
+                } catch (e: Exception) {
+                    _syncStatus.value = "Failed to sync status update. Saved offline."
+                }
+            } else {
                 _syncStatus.value = "Pending Sync (Offline Mode)"
             }
         }
     }
 
     fun deleteTask(id: String) {
+        val user = _currentUser.value ?: return
         viewModelScope.launch {
-            repository.deleteTodoItemById(id)
+            repository.deleteTodoItem(id)
+            if (!_isOfflineMode.value) {
+                try {
+                    com.example.api.ApiClient.todosService.deleteTodo(id)
+                    fetchRemoteAssignedTasksForUser(user.uuid)
+                    fetchRemoteTodosForUser(user.uuid)
+                } catch (e: Exception) {
+                    _syncStatus.value = "Failed to sync delete."
+                }
+            }
         }
     }
 
@@ -1145,21 +1170,35 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
     fun approveTaskCompletion(task: TodoItem) {
         viewModelScope.launch {
             val updatedTask = task.copy(
-                isApproved = true,
+                
                 status = "Complete"
             )
             repository.updateTodoItem(updatedTask)
+            if (!_isOfflineMode.value) {
+                try {
+                    com.example.api.ApiClient.todosService.updateTodo(updatedTask.uuid, updatedTask)
+                    fetchRemoteAssignedTasksForUser(updatedTask.user_uuid)
+                    fetchRemoteTodosForUser(updatedTask.user_uuid)
+                } catch (e: Exception) {}
+            }
         }
     }
 
     fun rejectTaskCompletion(task: TodoItem) {
         viewModelScope.launch {
             val updatedTask = task.copy(
-                isCompleted = false,
-                isApproved = false,
+                is_completed = false,
+                
                 status = "Incomplete"
             )
             repository.updateTodoItem(updatedTask)
+            if (!_isOfflineMode.value) {
+                try {
+                    com.example.api.ApiClient.todosService.updateTodo(updatedTask.uuid, updatedTask)
+                    fetchRemoteAssignedTasksForUser(updatedTask.user_uuid)
+                    fetchRemoteTodosForUser(updatedTask.user_uuid)
+                } catch (e: Exception) {}
+            }
         }
     }
 
@@ -1169,13 +1208,13 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch {
             val encryptedMessage = encryptMessage(content)
             val msg = Message(
-                senderId = user.id,
-                senderName = user.name,
-                senderRole = user.role,
-                recipientId = "Group",
+                sender_uuid = user.uuid,
+                
+                
+                recipient_uuid = "Group",
                 content = encryptedMessage,
                 timestamp = System.currentTimeMillis(),
-                isEncrypted = true,
+                isEncrypted = false,
                 isSynced = !_isOfflineMode.value
             )
 
@@ -1197,9 +1236,10 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
         val partner = _currentUser.value ?: return
         viewModelScope.launch {
             val summon = SummonAlert(
-                partnerId = partner.id,
-                partnerName = partner.name,
-                staffId = staffId,
+                summoner_uuid = partner.uuid,
+                location = "",
+                
+                staff_uuid = staffId,
                 timestamp = System.currentTimeMillis()
             )
             repository.insertSummon(summon)
@@ -1209,7 +1249,7 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
     fun clearActiveSummons() {
         val user = _currentUser.value ?: return
         viewModelScope.launch {
-            repository.clearSummonsForStaff(user.id)
+            repository.clearSummonAlert(user.uuid)
         }
     }
 
@@ -1223,12 +1263,12 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
     ) {
         val user = _currentUser.value ?: return
         viewModelScope.launch {
-            val encryptedMessage = if (content.isNotEmpty()) encryptMessage(content) else ""
+            val encryptedMessage = content
             val msg = Message(
-                senderId = user.id,
-                senderName = user.name,
-                senderRole = user.role,
-                recipientId = recipientId,
+                sender_uuid = user.uuid,
+                
+                
+                recipient_uuid = recipientId,
                 content = encryptedMessage,
                 timestamp = System.currentTimeMillis(),
                 isEncrypted = encryptedMessage.isNotEmpty(),
@@ -1245,7 +1285,8 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
                 _syncStatus.value = "Pending Sync (Offline Mode)"
             } else {
                 try {
-                    syncAllWithCloud()
+                    com.example.api.ApiClient.messagesService.sendMessage(msg)
+                    fetchRemoteMessages(user.uuid, recipientId)
                 } catch (e: Exception) {
                     Log.e("OnSiteViewModel", "Instant direct message sync failed", e)
                 }
@@ -1311,29 +1352,45 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
     ) {
         viewModelScope.launch {
             try {
+                val nameParts = name.trim().split(Regex("\\s+")).filter { it.isNotBlank() }
+                val firstName = nameParts.firstOrNull() ?: name.trim()
+                val lastName = if (nameParts.size > 1) nameParts.last() else ""
+                val middleName = if (nameParts.size > 2) nameParts.drop(1).dropLast(1).joinToString(" ") else null
+
                 val response = com.example.api.ApiClient.authService.register(
                     com.example.api.RegisterRequest(
                         email = email,
                         password = password,
                         full_name = name,
+                        first_name = firstName,
+                        middle_name = middleName,
+                        last_name = lastName,
                         role = role,
-                        department = department,
+                        designation = department,
                         custom_id = customId,
                         otp = otp,
                         age = age,
                         dob = dob,
-                        fathers_name = fathersName,
-                        mothers_name = mothersName,
-                        address = address,
-                        phone = phone,
+                        father_name = fathersName,
+                        mother_name = mothersName,
+                        permanent_address = address,
+                        current_address = address,
+                        contact = phone,
                         emergency_contact = emergencyContact,
                         doj = doj,
                         blood_group = bloodGroup
                     )
                 )
-                repository.insertEmployees(listOf(response.user))
-                selectUserSession(response.user)
-                onSuccess(response.user)
+                val registeredUser = response.user.copy(
+                    first_name = firstName,
+                    last_name = lastName,
+                    designation = department,
+                    contact = phone,
+                    password = password
+                )
+                repository.insertEmployees(listOf(registeredUser))
+                selectUserSession(registeredUser)
+                onSuccess(registeredUser)
             } catch (e: retrofit2.HttpException) {
                 Log.e("OnSiteViewModel", "API Registration failed", e)
                 try {
@@ -1379,15 +1436,107 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch {
             repository.insertEmployees(listOf(user))
             selectUserSession(user)
+            fetchAllUsersFromServer()
+            fetchUserProfile(user.uuid)
+        }
+    }
+
+    private suspend fun fetchUserProfile(userUuid: String) {
+        if (_isOfflineMode.value) return
+        try {
+            val profile = com.example.api.ApiClient.authService.getUserProfile(userUuid)
+            repository.saveUserDetails(profile)
+        } catch (e: Exception) {
+            Log.e("OnSiteViewModel", "Failed to fetch user profile", e)
+        }
+    }
+
+    private suspend fun fetchAllUsersFromServer() {
+        if (_isOfflineMode.value) return
+        try {
+            val allUsers = com.example.api.ApiClient.authService.getAllUsers()
+            if (allUsers.isNotEmpty()) {
+                repository.insertEmployees(allUsers)
+            }
+        } catch (e: Exception) {
+            Log.e("OnSiteViewModel", "Failed to fetch users for Talk To", e)
+        }
+    }
+
+    fun fetchRemoteAssignedTasksForUser(userUuid: String) {
+        viewModelScope.launch {
+            if (_isOfflineMode.value) return@launch
+            try {
+                val remoteTasks = com.example.api.ApiClient.tasksService.getTasks(userUuid)
+                remoteTasks.forEach { task ->
+                    repository.insertTodoItem(task.copy(isSynced = true, is_personal = false))
+                }
+            } catch (e: Exception) {
+                Log.e("OnSiteViewModel", "Failed to fetch remote tasks", e)
+            }
+        }
+    }
+
+    fun fetchRemoteTodosForUser(userUuid: String) {
+        viewModelScope.launch {
+            if (_isOfflineMode.value) return@launch
+            try {
+                val remoteTodos = com.example.api.ApiClient.todosService.getUserTodos(userUuid)
+                remoteTodos.forEach { todo ->
+                    repository.insertTodoItem(todo.copy(isSynced = true, is_personal = true))
+                }
+            } catch (e: Exception) {
+                Log.e("OnSiteViewModel", "Failed to fetch remote todos", e)
+            }
+        }
+    }
+
+    fun fetchRemoteLeavesForUser(userUuid: String) {
+        viewModelScope.launch {
+            if (_isOfflineMode.value) return@launch
+            try {
+                val remoteLeaves = com.example.api.ApiClient.leavesService.getUserLeaves(userUuid)
+                remoteLeaves.forEach { leave ->
+                    repository.insertLeaveRequest(leave.copy(isSynced = true))
+                }
+            } catch (e: Exception) {
+                Log.e("OnSiteViewModel", "Failed to fetch remote leaves", e)
+            }
+        }
+    }
+
+    private suspend fun fetchRemoteMessages(userUuid: String, otherUuid: String) {
+        if (_isOfflineMode.value) return
+        try {
+            val remoteMsgs = com.example.api.ApiClient.messagesService.getUserMessages(userUuid, otherUuid)
+            remoteMsgs.forEach { msg ->
+                repository.insertMessage(msg.copy(isSynced = true))
+            }
+        } catch (e: Exception) {
+            Log.e("OnSiteViewModel", "Failed to fetch remote messages", e)
         }
     }
 
     fun deleteEmployee(employeeId: String) {
         viewModelScope.launch {
-            repository.deleteEmployeeById(employeeId)
-            if (_currentUser.value?.id == employeeId) {
+            repository.deleteEmployee(employeeId)
+            if (_currentUser.value?.uuid == employeeId) {
                 logoutSession()
             }
+        }
+    }
+
+    suspend fun checkLeaveOverlap(userUuid: String, startDateStr: String, endDateStr: String, excludeLeaveUuid: String? = null): Boolean {
+        if (_isOfflineMode.value) return false
+        return try {
+            val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
+            val startMs = sdf.parse(startDateStr)?.time ?: 0L
+            val endMs = sdf.parse(endDateStr)?.time ?: 0L
+            val response = com.example.api.ApiClient.leavesService.checkOverlap(userUuid, startMs, endMs, excludeLeaveUuid)
+            response.overlap
+        } catch (e: Exception) {
+            android.util.Log.e("OnSiteViewModel", "Failed to check leave overlap", e)
+            false
         }
     }
 
@@ -1401,48 +1550,76 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
         val user = _currentUser.value ?: return
         viewModelScope.launch {
             val request = LeaveRequest(
-                employeeId = user.id,
-                employeeName = user.name,
-                employeeRole = if (user.role == "Manager") "Manager" else "Employee",
-                recipientIds = recipientIds.joinToString(","),
-                recipientNames = recipientNames.joinToString(", "),
+                user_uuid = user.uuid,
+                start_date = startDate,
+                end_date = endDate,
                 reason = reason,
-                startDate = startDate,
-                endDate = endDate,
-                timestamp = System.currentTimeMillis()
+                status = "Pending",
+                isSynced = !_isOfflineMode.value
             )
             try {
                 if (!_isOfflineMode.value) {
                     com.example.api.ApiClient.leavesService.createLeave(request)
+                    fetchRemoteLeavesForUser(user.uuid)
                 }
                 repository.insertLeaveRequest(request)
             } catch (e: Exception) {
-                repository.insertLeaveRequest(request)
+                repository.insertLeaveRequest(request.copy(isSynced = false))
+                _syncStatus.value = "Failed to sync leave request. Saved offline."
+            }
+        }
+    }
+
+    fun updateLeaveRequest(requestId: String, reason: String, startDate: String, endDate: String) {
+        viewModelScope.launch {
+            val target = allLeaveRequests.value.find { it.uuid == requestId } ?: return@launch
+            val updated = target.copy(reason = reason, start_date = startDate, end_date = endDate, isSynced = !_isOfflineMode.value)
+            repository.insertLeaveRequest(updated)
+            if (!_isOfflineMode.value) {
+                try {
+                    com.example.api.ApiClient.leavesService.updateLeave(requestId, updated)
+                    fetchRemoteLeavesForUser(target.user_uuid)
+                } catch (e: Exception) {}
+            }
+        }
+    }
+
+    fun deleteLeaveRequest(requestId: String) {
+        viewModelScope.launch {
+            val target = allLeaveRequests.value.find { it.uuid == requestId } ?: return@launch
+            repository.deleteLeaveRequest(requestId)
+            if (!_isOfflineMode.value) {
+                try {
+                    com.example.api.ApiClient.leavesService.deleteLeave(requestId)
+                    fetchRemoteLeavesForUser(target.user_uuid)
+                } catch (e: Exception) {}
             }
         }
     }
 
     fun approveLeaveRequest(requestId: String, approverName: String, comment: String) {
         viewModelScope.launch {
-            val target = allLeaveRequests.value.find { it.id == requestId } ?: return@launch
-            val updated = target.copy(
-                status = "Accepted",
-                responseComment = comment,
-                respondedBy = approverName
-            )
-            repository.updateLeaveRequest(updated)
+            val target = allLeaveRequests.value.find { it.uuid == requestId } ?: return@launch
+            repository.updateLeaveRequestStatus(requestId, "Accepted", comment, approverName)
+            if (!_isOfflineMode.value) {
+                try {
+                    com.example.api.ApiClient.leavesService.updateLeave(requestId, target.copy(status = "Accepted", comment = comment))
+                    fetchRemoteLeavesForUser(target.user_uuid)
+                } catch (e: Exception) {}
+            }
         }
     }
 
     fun rejectLeaveRequest(requestId: String, approverName: String, comment: String) {
         viewModelScope.launch {
-            val target = allLeaveRequests.value.find { it.id == requestId } ?: return@launch
-            val updated = target.copy(
-                status = "Rejected",
-                responseComment = comment,
-                respondedBy = approverName
-            )
-            repository.updateLeaveRequest(updated)
+            val target = allLeaveRequests.value.find { it.uuid == requestId } ?: return@launch
+            repository.updateLeaveRequestStatus(requestId, "Rejected", comment, approverName)
+            if (!_isOfflineMode.value) {
+                try {
+                    com.example.api.ApiClient.leavesService.updateLeave(requestId, target.copy(status = "Rejected", comment = comment))
+                    fetchRemoteLeavesForUser(target.user_uuid)
+                } catch (e: Exception) {}
+            }
         }
     }
 
@@ -1450,22 +1627,63 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch {
             val emp = repository.getEmployeeById(employeeId)
             if (emp != null) {
-                val updated = emp.copy(profilePhoto = photoBase64)
+                val updated = emp.copy(profile_image = photoBase64)
                 repository.updateEmployee(updated)
-                if (_currentUser.value?.id == employeeId) {
+                val existingProfile = repository.getAllUserDetailsDirect().find { it.user_uuid == employeeId }
+                val updatedProfile = existingProfile?.copy(profile_image = photoBase64) ?: UserDetails(
+                    uuid = employeeId,
+                    user_uuid = employeeId,
+                    first_name = emp.first_name ?: "",
+                    middle_name = null,
+                    last_name = emp.last_name ?: "",
+                    father_name = "",
+                    mother_name = "",
+                    dob = "",
+                    gender = "",
+                    blood_group = "",
+                    contact = emp.contact ?: "",
+                    official_email = emp.email,
+                    personal_email = emp.email,
+                    permanent_address = "",
+                    current_address = "",
+                    emergency_contact = "",
+                    profile_image = photoBase64,
+                    designation = emp.designation ?: ""
+                )
+                repository.saveUserDetails(updatedProfile)
+                if (!_isOfflineMode.value) {
+                    try {
+                        com.example.api.ApiClient.authService.updateProfileImage(
+                            employeeId,
+                            com.example.api.ProfileImageRequest(photoBase64)
+                        )
+                    } catch (e: Exception) {
+                        Log.e("OnSiteViewModel", "Failed to sync profile photo", e)
+                        _syncStatus.value = "Failed to sync profile photo. Saved offline."
+                    }
+                }
+                if (_currentUser.value?.uuid == employeeId) {
                     _currentUser.value = updated
                 }
             }
         }
     }
 
-    fun getDetailedProfileFlow(id: String): kotlinx.coroutines.flow.Flow<DetailedProfile?> {
-        return repository.getDetailedProfileFlow(id)
+    fun getUserDetails(id: String): kotlinx.coroutines.flow.Flow<UserDetails?> {
+        return repository.getUserDetails(id)
     }
 
-    fun saveDetailedProfile(profile: DetailedProfile) {
+    fun saveUserDetails(profile: UserDetails) {
         viewModelScope.launch {
-            repository.insertDetailedProfile(profile)
+            repository.saveUserDetails(profile)
+            if (!_isOfflineMode.value) {
+                try {
+                    com.example.api.ApiClient.authService.updateProfile(profile.user_uuid, profile)
+                } catch (e: Exception) {
+                    Log.e("OnSiteViewModel", "Failed to sync user profile", e)
+                    _syncStatus.value = "Failed to sync profile. Saved offline."
+                }
+            }
         }
     }
 
@@ -1473,19 +1691,29 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch {
             val emp = repository.getEmployeeById(employeeId)
             if (emp != null) {
+                val nameParts = name.trim().split(Regex("\\s+")).filter { it.isNotBlank() }
                 val updated = emp.copy(
-                    name = name,
                     email = email,
-                    department = department,
+                    designation = department,
                     password = password,
-                    role = if (department == "Partner") "Manager" else "Employee"
+                    first_name = nameParts.firstOrNull() ?: name.trim(),
+                    last_name = if (nameParts.size > 1) nameParts.last() else ""
                 )
                 repository.updateEmployee(updated)
-                if (_currentUser.value?.id == employeeId) {
+                if (_currentUser.value?.uuid == employeeId) {
                     _currentUser.value = updated
                     _isManager.value = (updated.role == "Manager")
                 }
             }
+        }
+    }
+
+    fun updateCurrentUserMfaEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            val user = _currentUser.value ?: return@launch
+            val updated = user.copy(is_mfa_enabled = enabled)
+            repository.updateEmployee(updated)
+            _currentUser.value = updated
         }
     }
 
@@ -1498,7 +1726,7 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
                 // Also update local db for offline cache matching
                 val emp = _currentUser.value
                 if (emp != null) {
-                    updateEmployeeDetails(emp.id, emp.name, emp.email, emp.department, newPass)
+                    updateEmployeeDetails(emp.uuid, (emp.first_name ?: ""), emp.email, (emp.designation ?: ""), newPass)
                 }
                 onResult(null, true)
             } catch (e: retrofit2.HttpException) {

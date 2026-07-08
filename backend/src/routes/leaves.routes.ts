@@ -5,7 +5,10 @@ const router = Router();
 const leavesController = new LeavesController();
 
 router.get('/', leavesController.getLeaves);
+router.get('/check-overlap/:userUuid', leavesController.checkOverlap);
+router.get('/user/:userUuid', leavesController.getUserLeaves);
 router.post('/', leavesController.createLeave);
 router.put('/:id', leavesController.updateLeave);
+router.delete('/:id', leavesController.deleteLeave);
 
 export default router;
