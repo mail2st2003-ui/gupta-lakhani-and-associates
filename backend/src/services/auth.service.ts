@@ -1,7 +1,6 @@
 import { UserRepository } from '../repositories/user.repository';
 import * as otplib from 'otplib';
 const authenticator = otplib.authenticator;
-authenticator.options = { window: 4 };
 import qrcode from 'qrcode';
 // @ts-ignore
 import * as SibApiV3Sdk from 'sib-api-v3-sdk';

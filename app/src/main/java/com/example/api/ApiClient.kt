@@ -103,6 +103,9 @@ interface AuthApiService {
 
     @POST("api/auth/2fa/disable")
     suspend fun disable2FA(@Body request: Setup2FARequest): Verify2FASetupResponse
+
+    @GET("api/auth/users")
+    suspend fun getAllUsers(): List<com.example.data.Employee>
 }
 
 data class SendOtpRequest(val email: String)
@@ -148,18 +151,28 @@ object ApiClient {
 
     val authService: AuthApiService = retrofit.create(AuthApiService::class.java)
     val tasksService: TasksApiService = retrofit.create(TasksApiService::class.java)
+    val todosService: TodosApiService = retrofit.create(TodosApiService::class.java)
     val leavesService: LeavesApiService = retrofit.create(LeavesApiService::class.java)
 }
 
 interface TasksApiService {
     @GET("api/tasks")
     suspend fun getTasks(
-        @Query("employee_id") employeeId: String,
-        @Query("include_personal") includePersonal: Boolean = true
+        @Query("employee_id") employeeId: String
     ): List<com.example.data.TodoItem>
 
     @POST("api/tasks")
     suspend fun createTask(@Body task: com.example.data.TodoItem): Any
+}
+
+interface TodosApiService {
+    @GET("api/todos/user/{userUuid}")
+    suspend fun getUserTodos(
+        @Path("userUuid") userUuid: String
+    ): List<com.example.data.TodoItem>
+
+    @POST("api/todos")
+    suspend fun createTodo(@Body todo: com.example.data.TodoItem): Any
 }
 
 interface LeavesApiService {

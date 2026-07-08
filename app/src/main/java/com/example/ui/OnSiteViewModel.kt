@@ -1015,7 +1015,7 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
             )
             try {
                 if (!_isOfflineMode.value) {
-                    com.example.api.ApiClient.tasksService.createTask(task)
+                    com.example.api.ApiClient.todosService.createTodo(task)
                 }
                 repository.insertTodoItem(task)
             } catch (e: Exception) {
@@ -1065,7 +1065,7 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
             )
             try {
                 if (!_isOfflineMode.value) {
-                    com.example.api.ApiClient.tasksService.createTask(task)
+                    com.example.api.ApiClient.todosService.createTodo(task)
                 }
                 repository.insertTodoItem(task)
             } catch (e: Exception) {
@@ -1368,18 +1368,36 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
             repository.insertEmployees(listOf(user))
             selectUserSession(user)
             fetchRemoteTasksForUser(user.uuid)
+            fetchAllUsersFromServer()
+        }
+    }
+
+    private suspend fun fetchAllUsersFromServer() {
+        if (_isOfflineMode.value) return
+        try {
+            val allUsers = com.example.api.ApiClient.authService.getAllUsers()
+            if (allUsers.isNotEmpty()) {
+                repository.insertEmployees(allUsers)
+            }
+        } catch (e: Exception) {
+            Log.e("OnSiteViewModel", "Failed to fetch users for Talk To", e)
         }
     }
 
     private suspend fun fetchRemoteTasksForUser(userUuid: String) {
         if (_isOfflineMode.value) return
         try {
-            val remoteTasks = com.example.api.ApiClient.tasksService.getTasks(userUuid, includePersonal = true)
+            val remoteTasks = com.example.api.ApiClient.tasksService.getTasks(userUuid)
             remoteTasks.forEach { task ->
-                repository.insertTodoItem(task.copy(isSynced = true))
+                repository.insertTodoItem(task.copy(isSynced = true, is_personal = false))
+            }
+            
+            val remoteTodos = com.example.api.ApiClient.todosService.getUserTodos(userUuid)
+            remoteTodos.forEach { todo ->
+                repository.insertTodoItem(todo.copy(isSynced = true, is_personal = true))
             }
         } catch (e: Exception) {
-            Log.e("OnSiteViewModel", "Failed to fetch remote tasks", e)
+            Log.e("OnSiteViewModel", "Failed to fetch remote tasks/todos", e)
         }
     }
 

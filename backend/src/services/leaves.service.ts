@@ -19,12 +19,7 @@ export class LeavesService {
       start_date: leaveData.start_date || leaveData.startDate,
       end_date: leaveData.end_date || leaveData.endDate,
       status: leaveData.status || 'Pending',
-      timestamp: leaveData.timestamp || Date.now(),
-      comment: leaveData.comment || leaveData.responseComment || ''
     };
-
-    const managerUuid = leaveData.manager_uuid || leaveData.managerUuid;
-    if (managerUuid) dbData.manager_uuid = managerUuid;
 
     const { data, error } = await supabase
       .from('leave_requests')
@@ -38,8 +33,9 @@ export class LeavesService {
   async updateLeave(leaveUuid: string, updateData: any) {
     const dbData: any = {};
     if (updateData.status !== undefined) dbData.status = updateData.status;
-    if (updateData.comment !== undefined) dbData.comment = updateData.comment;
-    if (updateData.manager_uuid !== undefined) dbData.manager_uuid = updateData.manager_uuid || null;
+    if (updateData.reason !== undefined) dbData.reason = updateData.reason;
+    if (updateData.start_date !== undefined) dbData.start_date = updateData.start_date;
+    if (updateData.end_date !== undefined) dbData.end_date = updateData.end_date;
 
     const { data, error } = await supabase
       .from('leave_requests')

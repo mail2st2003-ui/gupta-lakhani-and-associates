@@ -2,31 +2,8 @@ import { randomUUID } from 'crypto';
 import { supabase } from '../config/supabase';
 
 export class TasksService {
-  async getTasks(employeeId?: string, includePersonal = false) {
+  async getTasks(employeeId?: string) {
     const results: any[] = [];
-
-    if (includePersonal && employeeId) {
-      const { data: todos, error: todosError } = await supabase
-        .from('todos')
-        .select('*')
-        .eq('user_uuid', employeeId)
-        .order('timestamp', { ascending: false });
-      if (todosError) throw todosError;
-
-      results.push(...(todos || []).map((todo: any) => ({
-        uuid: todo.uuid,
-        user_uuid: todo.user_uuid,
-        title: todo.title || '',
-        description: todo.description || '',
-        priority: todo.priority || 'Medium',
-        is_completed: todo.is_completed || false,
-        status: todo.status || 'Pending',
-        timestamp: todo.timestamp || Date.now(),
-        is_personal: true,
-        assigned_by: '',
-        isSynced: true
-      })));
-    }
 
     let query = supabase
       .from('tasks')
@@ -61,37 +38,7 @@ export class TasksService {
   }
 
   async createTask(taskData: any) {
-    const isPersonal = taskData.is_personal ?? taskData.isPersonal ?? true;
-
-    if (isPersonal) {
-      const todoData = {
-        uuid: taskData.uuid || taskData.id || randomUUID(),
-        user_uuid: taskData.user_uuid || taskData.employeeId,
-        title: taskData.title,
-        description: taskData.description || '',
-        priority: taskData.priority || 'Medium',
-        status: taskData.status || 'Pending',
-        is_completed: taskData.is_completed ?? taskData.isCompleted ?? false,
-        timestamp: taskData.timestamp || Date.now()
-      };
-
-      if (!todoData.user_uuid) {
-        throw new Error('Task user_uuid is required');
-      }
-      if (!todoData.title) {
-        throw new Error('Task title is required');
-      }
-
-      const { data, error } = await supabase
-        .from('todos')
-        .upsert([todoData], { onConflict: 'uuid' })
-        .select()
-        .single();
-      if (error) throw error;
-      return data;
-    }
-
-    const taskUuid = taskData.uuid || taskData.id;
+    const taskUuid = taskData.uuid || taskData.id || randomUUID();
     const taskRecord = {
       uuid: taskUuid,
       created_by_user_uuid: taskData.assigned_by || taskData.assignedBy || null,
@@ -112,7 +59,8 @@ export class TasksService {
       description: taskData.description || '',
       status: taskData.status || 'Pending',
       priority: taskData.priority || 'Medium',
-      due_date: taskData.due_date || taskData.timestamp || Date.now()
+      dues_date: taskData.due_date || taskData.timestamp || Date.now(),
+      remarks: taskData.remarks || ''
     };
 
     const { data: details, error: detailsError } = await supabase

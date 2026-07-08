@@ -2801,63 +2801,87 @@ fun EmployeeTasksScreen(viewModel: OnSiteViewModel, currentUser: Employee) {
                                 if (task.is_completed) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
                             )
                         ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth().padding(10.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
+                            Column(
+                                modifier = Modifier.fillMaxWidth().padding(10.dp)
                             ) {
                                 Row(
-                                    modifier = Modifier.weight(1f),
-                                    verticalAlignment = Alignment.CenterVertically
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
-                                    Checkbox(
-                                        checked = task.is_completed,
-                                        onCheckedChange = { viewModel.toggleTaskCompletion(task) }
-                                    )
-                                    Column {
-                                        Text(
-                                            text = task.title,
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            fontWeight = FontWeight.Bold,
-                                            color = if (task.is_completed) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface
+                                    Row(
+                                        modifier = Modifier.weight(1f),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        // Status icon instead of checkbox
+                                        Icon(
+                                            imageVector = if (task.is_completed) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
+                                            contentDescription = if (task.is_completed) "Completed" else "Pending",
+                                            tint = if (task.is_completed) Color(0xFF4CAF50) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                                            modifier = Modifier.size(22.dp)
                                         )
-                                        if (task.description.isNotBlank()) {
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Column {
                                             Text(
-                                                text = task.description,
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                text = task.title,
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (task.is_completed) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface
                                             )
+                                            if (task.description.isNotBlank()) {
+                                                Text(
+                                                    text = task.description,
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
+                                        }
+                                    }
+                                    
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Surface(
+                                            color = when (task.priority) {
+                                                "High" -> Color(0xFFFFEBEE)
+                                                "Medium" -> Color(0xFFFFF3E0)
+                                                else -> Color(0xFFE8F5E9)
+                                            },
+                                            shape = RoundedCornerShape(4.dp)
+                                        ) {
+                                            Text(
+                                                text = task.priority,
+                                                color = when (task.priority) {
+                                                    "High" -> Color(0xFFC62828)
+                                                    "Medium" -> Color(0xFFEF6C00)
+                                                    else -> Color(0xFF2E7D32)
+                                                },
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.Bold,
+                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        IconButton(
+                                            onClick = { viewModel.deleteTask(task.uuid) },
+                                            modifier = Modifier.size(24.dp)
+                                        ) {
+                                            Icon(Icons.Default.Delete, contentDescription = "Delete Personal Task", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp))
                                         }
                                     }
                                 }
                                 
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Surface(
-                                        color = when (task.priority) {
-                                            "High" -> Color(0xFFFFEBEE)
-                                            "Medium" -> Color(0xFFFFF3E0)
-                                            else -> Color(0xFFE8F5E9)
-                                        },
-                                        shape = RoundedCornerShape(4.dp)
+                                // "Mark Completed" button — only visible if task is not completed
+                                if (!task.is_completed) {
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Button(
+                                        onClick = { viewModel.updateTaskStatus(task, "Complete") },
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50)),
+                                        shape = RoundedCornerShape(8.dp),
+                                        modifier = Modifier.fillMaxWidth().height(34.dp),
+                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
                                     ) {
-                                        Text(
-                                            text = task.priority,
-                                            color = when (task.priority) {
-                                                "High" -> Color(0xFFC62828)
-                                                "Medium" -> Color(0xFFEF6C00)
-                                                else -> Color(0xFF2E7D32)
-                                            },
-                                            style = MaterialTheme.typography.labelSmall,
-                                            fontWeight = FontWeight.Bold,
-                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                        )
-                                    }
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    IconButton(
-                                        onClick = { viewModel.deleteTask(task.uuid) },
-                                        modifier = Modifier.size(24.dp)
-                                    ) {
-                                        Icon(Icons.Default.Delete, contentDescription = "Delete Personal Task", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp))
+                                        Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text("Mark Completed", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                     }
                                 }
                             }

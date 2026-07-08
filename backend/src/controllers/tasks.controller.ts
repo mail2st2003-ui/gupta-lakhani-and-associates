@@ -6,12 +6,8 @@ export class TasksController {
 
   getTasks = async (req: Request, res: Response): Promise<void> => {
     try {
-      const { employee_id, include_personal } = req.query;
-      const includePersonal = String(include_personal ?? '').toLowerCase() === 'true';
-      const data = await this.tasksService.getTasks(
-        employee_id as string,
-        includePersonal
-      );
+      const { employee_id } = req.query;
+      const data = await this.tasksService.getTasks(employee_id as string);
       res.status(200).json(data);
     } catch (error: any) {
       res.status(400).json({ error: error.message });
