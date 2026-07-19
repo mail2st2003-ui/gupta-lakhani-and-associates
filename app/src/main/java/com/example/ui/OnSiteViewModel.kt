@@ -1451,7 +1451,7 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    private suspend fun fetchAllUsersFromServer() {
+    suspend fun fetchAllUsersFromServer() {
         if (_isOfflineMode.value) return
         try {
             val allUsers = com.example.api.ApiClient.authService.getAllUsers()
