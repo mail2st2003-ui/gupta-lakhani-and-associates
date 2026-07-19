@@ -220,6 +220,11 @@ interface MessagesApiService {
         @Path("otherUuid") otherUuid: String
     ): List<com.example.data.Message>
 
+    @GET("api/messages/{userUuid}")
+    suspend fun getAllMessagesForUser(
+        @Path("userUuid") userUuid: String
+    ): List<com.example.data.Message>
+
     @DELETE("api/messages/{userUuid}/{otherUuid}")
     suspend fun deleteMessages(
         @Path("userUuid") userUuid: String,

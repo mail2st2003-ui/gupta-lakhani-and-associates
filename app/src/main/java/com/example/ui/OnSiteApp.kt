@@ -2937,17 +2937,100 @@ fun TalkToScreen(viewModel: OnSiteViewModel, currentUser: Employee, isManager: B
                     .padding(12.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Column {
+                var showExpandedProfile by remember { mutableStateOf(false) }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Text(
-                        text = "Talk to Partners & Staff",
+                        text = "Recent Chats",
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.primary
                     )
-                    Text(
-                        text = "Select any firm member to start a secure direct chat",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.surfaceVariant)
+                            .clickable { showExpandedProfile = true },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        val bitmap = remember(currentUser.profile_image) {
+                            currentUser.profile_image?.let { decodeBase64ToBitmap(it) }
+                        }
+                        if (bitmap != null) {
+                            Image(
+                                bitmap = bitmap,
+                                contentDescription = "My Profile",
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        } else {
+                            Text(
+                                text = (currentUser.first_name ?: "").take(2).uppercase(),
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+
+                if (showExpandedProfile) {
+                    AlertDialog(
+                        onDismissRequest = { showExpandedProfile = false },
+                        text = {
+                            Column(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(150.dp)
+                                        .clip(CircleShape)
+                                        .background(MaterialTheme.colorScheme.surfaceVariant),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    val bitmap = remember(currentUser.profile_image) {
+                                        currentUser.profile_image?.let { decodeBase64ToBitmap(it) }
+                                    }
+                                    if (bitmap != null) {
+                                        Image(
+                                            bitmap = bitmap,
+                                            contentDescription = "My Profile Expanded",
+                                            contentScale = ContentScale.Crop,
+                                            modifier = Modifier.fillMaxSize()
+                                        )
+                                    } else {
+                                        Text(
+                                            text = (currentUser.first_name ?: "").take(2).uppercase(),
+                                            style = MaterialTheme.typography.headlineLarge,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                                Spacer(modifier = Modifier.height(16.dp))
+                                Text(
+                                    text = currentUser.first_name ?: "",
+                                    style = MaterialTheme.typography.titleLarge,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = currentUser.email,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        },
+                        confirmButton = {
+                            TextButton(onClick = { showExpandedProfile = false }) {
+                                Text("Close")
+                            }
+                        }
                     )
                 }
 
@@ -5731,8 +5814,9 @@ fun EmployeeAvatar(
 fun ProfilePhotoUploadDialog(
     employee: Employee,
     onDismiss: () -> Unit,
-    onPhotoSelected: (String?) -> Unit
+    onPhotoSelected: (String?, (Boolean) -> Unit) -> Unit
 ) {
+    var isUploading by remember { mutableStateOf(false) }
     var customUrl by remember { mutableStateOf("") }
     val context = LocalContext.current
 
@@ -5744,16 +5828,24 @@ fun ProfilePhotoUploadDialog(
                 val inputStream = context.contentResolver.openInputStream(uri)
                 val bytes = inputStream?.readBytes()
                 if (bytes != null) {
+                    isUploading = true
                     // Standard Base64 encoding
                     val base64String = android.util.Base64.encodeToString(bytes, android.util.Base64.DEFAULT)
-                    onPhotoSelected(base64String)
-                    android.widget.Toast.makeText(context, "Photo uploaded from device successfully!", android.widget.Toast.LENGTH_SHORT).show()
+                    onPhotoSelected(base64String) { success ->
+                        isUploading = false
+                        if (success) {
+                            android.widget.Toast.makeText(context, "Photo uploaded successfully!", android.widget.Toast.LENGTH_SHORT).show()
+                        } else {
+                            android.widget.Toast.makeText(context, "Failed to upload photo.", android.widget.Toast.LENGTH_SHORT).show()
+                        }
+                    }
                 } else {
                     android.widget.Toast.makeText(context, "Failed to read image data.", android.widget.Toast.LENGTH_SHORT).show()
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
                 android.widget.Toast.makeText(context, "Error reading image: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
+                isUploading = false
             }
         }
     }
@@ -5783,23 +5875,30 @@ fun ProfilePhotoUploadDialog(
                         .background(MaterialTheme.colorScheme.surfaceVariant),
                     contentAlignment = Alignment.Center
                 ) {
-                    val bitmap = remember(employee.profile_image) {
-                        employee.profile_image?.let { decodeBase64ToBitmap(it) }
-                    }
-                    if (bitmap != null) {
-                        Image(
-                            bitmap = bitmap,
-                            contentDescription = "Current Photo",
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxSize()
+                    if (isUploading) {
+                        androidx.compose.material3.CircularProgressIndicator(
+                            modifier = Modifier.size(40.dp),
+                            color = MaterialTheme.colorScheme.primary
                         )
                     } else {
-                        Text(
-                            text = (employee.first_name ?: "").take(2).uppercase(),
-                            style = MaterialTheme.typography.headlineSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        val bitmap = remember(employee.profile_image) {
+                            employee.profile_image?.let { decodeBase64ToBitmap(it) }
+                        }
+                        if (bitmap != null) {
+                            Image(
+                                bitmap = bitmap,
+                                contentDescription = "Current Photo",
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        } else {
+                            Text(
+                                text = (employee.first_name ?: "").take(2).uppercase(),
+                                style = MaterialTheme.typography.headlineSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
                 }
 
@@ -5857,8 +5956,13 @@ fun ProfilePhotoUploadDialog(
                                         colorSeed = index * 7 + 3,
                                         styleIndex = index % 3
                                     )
-                                    onPhotoSelected(presetBase64)
-                                    android.widget.Toast.makeText(context, "Preset profile photo applied!", android.widget.Toast.LENGTH_SHORT).show()
+                                    isUploading = true
+                                    onPhotoSelected(presetBase64) { success ->
+                                        isUploading = false
+                                        if (success) {
+                                            android.widget.Toast.makeText(context, "Preset profile photo applied!", android.widget.Toast.LENGTH_SHORT).show()
+                                        }
+                                    }
                                 },
                             contentAlignment = Alignment.Center
                         ) {
@@ -5900,8 +6004,13 @@ fun ProfilePhotoUploadDialog(
                             colorSeed = (10..99).random(),
                             styleIndex = (0..2).random()
                         )
-                        onPhotoSelected(cameraBase64)
-                        android.widget.Toast.makeText(context, "📸 Click! Simulated photo captured successfully!", android.widget.Toast.LENGTH_LONG).show()
+                        isUploading = true
+                        onPhotoSelected(cameraBase64) { success ->
+                            isUploading = false
+                            if (success) {
+                                android.widget.Toast.makeText(context, "📸 Click! Simulated photo captured successfully!", android.widget.Toast.LENGTH_LONG).show()
+                            }
+                        }
                     },
                     modifier = Modifier.fillMaxWidth()
                 ) {
@@ -5923,8 +6032,13 @@ fun ProfilePhotoUploadDialog(
 
                 OutlinedButton(
                     onClick = {
-                        onPhotoSelected(null)
-                        android.widget.Toast.makeText(context, "Profile photo cleared.", android.widget.Toast.LENGTH_SHORT).show()
+                        isUploading = true
+                        onPhotoSelected(null) { success ->
+                            isUploading = false
+                            if (success) {
+                                android.widget.Toast.makeText(context, "Profile photo cleared.", android.widget.Toast.LENGTH_SHORT).show()
+                            }
+                        }
                     },
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
                     border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.5f)),
@@ -6027,9 +6141,13 @@ fun EmployeeProfileDetailDialog(
         ProfilePhotoUploadDialog(
             employee = employee,
             onDismiss = { showPhotoUpload = false },
-            onPhotoSelected = { base64 ->
-                viewModel.updateEmployeeProfilePhoto(employee.uuid, base64)
-                showPhotoUpload = false
+            onPhotoSelected = { base64, onResult ->
+                viewModel.updateEmployeeProfilePhoto(employee.uuid, base64) { success ->
+                    onResult(success)
+                    if (success) {
+                        showPhotoUpload = false
+                    }
+                }
             }
         )
     }
@@ -7270,9 +7388,13 @@ fun MyProfileScreen(viewModel: OnSiteViewModel, user: Employee) {
         ProfilePhotoUploadDialog(
             employee = user,
             onDismiss = { showPhotoUpload = false },
-            onPhotoSelected = { base64 ->
-                viewModel.updateEmployeeProfilePhoto(user.uuid, base64)
-                showPhotoUpload = false
+            onPhotoSelected = { base64, onResult ->
+                viewModel.updateEmployeeProfilePhoto(user.uuid, base64) { success ->
+                    onResult(success)
+                    if (success) {
+                        showPhotoUpload = false
+                    }
+                }
             }
         )
     }

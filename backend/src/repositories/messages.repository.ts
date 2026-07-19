@@ -39,10 +39,29 @@ export class MessagesRepository {
   }
 
   async deleteMessagesBetween(user1Uuid: string, user2Uuid: string) {
-    const { error } = await supabase
+    const { error: error1 } = await supabase
       .from('messages')
       .delete()
-      .or(`and(sender_uuid.eq.${user1Uuid},recipient_uuid.eq.${user2Uuid}),and(sender_uuid.eq.${user2Uuid},recipient_uuid.eq.${user1Uuid})`);
+      .match({ sender_uuid: user1Uuid, recipient_uuid: user2Uuid });
+      
+    if (error1) throw error1;
+
+    const { error: error2 } = await supabase
+      .from('messages')
+      .delete()
+      .match({ sender_uuid: user2Uuid, recipient_uuid: user1Uuid });
+
+    if (error2) throw error2;
+  }
+
+  async getAllUserMessages(userUuid: string) {
+    const { data, error } = await supabase
+      .from('messages')
+      .select('*')
+      .or(`sender_uuid.eq.${userUuid},recipient_uuid.eq.${userUuid}`)
+      .order('timestamp', { ascending: true });
+    
     if (error) throw error;
+    return data;
   }
 }

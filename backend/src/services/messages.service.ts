@@ -14,4 +14,8 @@ export class MessagesService {
   async deleteMessagesBetween(userUuid: string, otherUuid: string) {
     return this.messagesRepository.deleteMessagesBetween(userUuid, otherUuid);
   }
+
+  async getAllUserMessages(userUuid: string) {
+    return this.messagesRepository.getAllUserMessages(userUuid);
+  }
 }

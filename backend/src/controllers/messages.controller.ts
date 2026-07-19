@@ -45,4 +45,14 @@ export class MessagesController {
       res.status(400).json({ error: error.message });
     }
   };
+
+  getAllUserMessages = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { userUuid } = req.params;
+      const data = await this.messagesService.getAllUserMessages(userUuid as string);
+      res.status(200).json(data);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  };
 }

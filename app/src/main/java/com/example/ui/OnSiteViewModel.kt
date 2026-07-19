@@ -718,39 +718,14 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
             if (_isFirestoreEnabled.value) firestoreSuccess = false
         }
 
-        // 4. Messages
+        // 4. Messages (via Node.js Backend)
         try {
-            val local = repository.getAllMessagesDirect()
-            val kvdbRemote = CloudSyncHelper.fetchList("messages", Message::class.java)
-            val firestoreRemote = if (_isFirestoreEnabled.value) {
-                com.example.data.FirestoreSyncHelper.fetchList("messages", Message::class.java)
-            } else {
-                null
-            }
-
-            val allSources = mutableListOf<Message>()
-            allSources.addAll(local)
-            if (kvdbRemote != null) allSources.addAll(kvdbRemote)
-            if (firestoreRemote != null) allSources.addAll(firestoreRemote)
-
-            if (kvdbRemote != null || firestoreRemote != null) {
-                val merged = allSources.distinctBy { "${it.sender_uuid}_${it.timestamp}" }
-                if (merged.size != local.size || merged != local) {
-                    merged.forEach { msg ->
-                        repository.insertMessage(msg)
-                    }
-                }
-                if (kvdbRemote != null) {
-                    CloudSyncHelper.saveList("messages", merged, Message::class.java)
-                }
-                if (_isFirestoreEnabled.value) {
-                    val ok = com.example.data.FirestoreSyncHelper.saveList("messages", merged, Message::class.java)
-                    if (!ok) firestoreSuccess = false
-                }
+            val user = _currentUser.value
+            if (user != null) {
+                syncUserMessages(user.uuid)
             }
         } catch (e: Exception) {
             Log.e("OnSiteViewModel", "Sync messages error", e)
-            if (_isFirestoreEnabled.value) firestoreSuccess = false
         }
 
         // 5. System Alerts
@@ -1297,10 +1272,6 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
     fun deleteChatWithUser(otherUserId: String) {
         val user = _currentUser.value ?: return
         viewModelScope.launch {
-            // Delete locally
-            repository.deleteMessagesBetween(user.uuid, otherUserId)
-            
-            // Try deleting remotely
             if (!_isOfflineMode.value) {
                 try {
                     com.example.api.ApiClient.messagesService.deleteMessages(user.uuid, otherUserId)
@@ -1308,6 +1279,9 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
                     Log.e("OnSiteViewModel", "Failed to delete chat remotely", e)
                 }
             }
+            
+            // Delete locally after remote attempt completes
+            repository.deleteMessagesBetween(user.uuid, otherUserId)
         }
     }
 
@@ -1455,6 +1429,7 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
             selectUserSession(user)
             fetchAllUsersFromServer()
             fetchUserProfile(user.uuid)
+            syncUserMessages(user.uuid)
         }
     }
 
@@ -1534,10 +1509,22 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
         try {
             val remoteMsgs = com.example.api.ApiClient.messagesService.getUserMessages(userUuid, otherUuid)
             remoteMsgs.forEach { msg ->
-                repository.insertMessage(msg.copy(isSynced = true))
+                repository.insertMessage(msg)
             }
         } catch (e: Exception) {
             Log.e("OnSiteViewModel", "Failed to fetch remote messages", e)
+        }
+    }
+
+    private suspend fun syncUserMessages(userUuid: String) {
+        if (_isOfflineMode.value) return
+        try {
+            val remoteMsgs = com.example.api.ApiClient.messagesService.getAllMessagesForUser(userUuid)
+            remoteMsgs.forEach { msg ->
+                repository.insertMessage(msg)
+            }
+        } catch (e: Exception) {
+            Log.e("OnSiteViewModel", "Failed to sync all user messages", e)
         }
     }
 
@@ -1647,48 +1634,53 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    fun updateEmployeeProfilePhoto(employeeId: String, photoBase64: String?) {
+    fun updateEmployeeProfilePhoto(employeeId: String, photoBase64: String?, onResult: (Boolean) -> Unit = {}) {
         viewModelScope.launch {
-            val emp = repository.getEmployeeById(employeeId)
-            if (emp != null) {
-                val updated = emp.copy(profile_image = photoBase64)
-                repository.updateEmployee(updated)
-                val existingProfile = repository.getAllUserDetailsDirect().find { it.user_uuid == employeeId }
-                val updatedProfile = existingProfile?.copy(profile_image = photoBase64) ?: UserDetails(
-                    uuid = employeeId,
-                    user_uuid = employeeId,
-                    first_name = emp.first_name ?: "",
-                    middle_name = null,
-                    last_name = emp.last_name ?: "",
-                    father_name = "",
-                    mother_name = "",
-                    dob = "",
-                    gender = "",
-                    blood_group = "",
-                    contact = emp.contact ?: "",
-                    official_email = emp.email,
-                    personal_email = emp.email,
-                    permanent_address = "",
-                    current_address = "",
-                    emergency_contact = "",
-                    profile_image = photoBase64,
-                    designation = emp.designation ?: ""
-                )
-                repository.saveUserDetails(updatedProfile)
-                if (!_isOfflineMode.value) {
-                    try {
-                        com.example.api.ApiClient.authService.updateProfileImage(
-                            employeeId,
-                            com.example.api.ProfileImageRequest(photoBase64)
-                        )
-                    } catch (e: Exception) {
-                        Log.e("OnSiteViewModel", "Failed to sync profile photo", e)
-                        _syncStatus.value = "Failed to sync profile photo. Saved offline."
+            try {
+                val emp = repository.getAllEmployeesDirect().find { it.uuid == employeeId }
+                if (emp != null) {
+                    val updated = emp.copy(profile_image = photoBase64)
+                    repository.updateEmployee(updated)
+                    val existingProfile = repository.getAllUserDetailsDirect().find { it.user_uuid == employeeId }
+                    val updatedProfile = existingProfile?.copy(profile_image = photoBase64) ?: UserDetails(
+                        uuid = employeeId,
+                        user_uuid = employeeId,
+                        first_name = emp.first_name ?: "",
+                        middle_name = null,
+                        last_name = emp.last_name ?: "",
+                        father_name = "",
+                        mother_name = "",
+                        dob = "",
+                        gender = "",
+                        blood_group = "",
+                        contact = emp.contact ?: "",
+                        official_email = emp.email,
+                        personal_email = emp.email,
+                        permanent_address = "",
+                        current_address = "",
+                        emergency_contact = "",
+                        profile_image = photoBase64,
+                        designation = emp.designation ?: ""
+                    )
+                    repository.saveUserDetails(updatedProfile)
+                    if (!_isOfflineMode.value) {
+                        try {
+                            com.example.api.ApiClient.authService.updateProfileImage(
+                                employeeId,
+                                com.example.api.ProfileImageRequest(photoBase64)
+                            )
+                        } catch (e: Exception) {
+                            Log.e("OnSiteViewModel", "Failed to upload profile photo remotely", e)
+                        }
+                    }
+                    if (_currentUser.value?.uuid == employeeId) {
+                        _currentUser.value = updated
                     }
                 }
-                if (_currentUser.value?.uuid == employeeId) {
-                    _currentUser.value = updated
-                }
+                onResult(true)
+            } catch (e: Exception) {
+                Log.e("OnSiteViewModel", "Failed to update profile photo", e)
+                onResult(false)
             }
         }
     }
