@@ -11,7 +11,7 @@ plugins {
 }
 
 android {
-  namespace = "com.example"
+  namespace = "com.example" 
   compileSdk = 34
 
   defaultConfig {
@@ -113,6 +113,7 @@ dependencies {
   testImplementation(libs.androidx.core)
   testImplementation(libs.androidx.junit)
   testImplementation(libs.junit)
+  testImplementation("io.mockk:mockk:1.13.8")
   testImplementation(libs.kotlinx.coroutines.test)
   testImplementation(libs.robolectric)
   testImplementation(libs.roborazzi)

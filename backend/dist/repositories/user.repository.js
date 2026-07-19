@@ -12,13 +12,8 @@ class UserRepository {
         if (!details)
             return baseUser;
         return {
-            ...baseUser,
-            first_name: details.first_name ?? null,
-            last_name: details.last_name ?? null,
-            designation: details.designation ?? null,
-            profile_image: details.profile_image ?? null,
-            contact: details.contact ?? null,
-            emergency_contact: details.emergency_contact ?? null
+            ...details,
+            ...baseUser, // ensures baseUser.uuid overrides details.uuid
         };
     }
     async createUser(userData) {
@@ -106,6 +101,22 @@ class UserRepository {
             .eq('uuid', uuid);
         if (error)
             throw error;
+    }
+    async updatePassword(uuid, hashedPassword) {
+        const { error } = await supabase_1.supabase
+            .from('users')
+            .update({ password: hashedPassword })
+            .eq('uuid', uuid);
+        if (error)
+            throw error;
+    }
+    async getAllUsers() {
+        const { data, error } = await supabase_1.supabase
+            .from('users')
+            .select('*, user_details(*)');
+        if (error)
+            throw error;
+        return (data || []).map((user) => this.flattenUserProfile(user));
     }
 }
 exports.UserRepository = UserRepository;

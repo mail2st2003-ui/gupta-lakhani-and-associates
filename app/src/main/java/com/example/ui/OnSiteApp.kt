@@ -2927,102 +2927,106 @@ fun TalkToScreen(viewModel: OnSiteViewModel, currentUser: Employee, isManager: B
     }
 
     if (activeChatUser == null) {
+        var showAllUsersDialog by remember { mutableStateOf(false) }
+
         // Contact List / User Selector
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Column {
-                Text(
-                    text = "Talk to Partners & Staff",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary
-                )
-                Text(
-                    text = "Select any firm member to start a secure direct chat",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-
-            val targetUsers = remember(employees, currentUser) {
-                employees.filter { it.uuid != currentUser.uuid }
-            }
-
-            if (targetUsers.isEmpty()) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f),
-                    contentAlignment = Alignment.Center
-                ) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Column {
                     Text(
-                        text = "No other firm members registered yet.",
-                        style = MaterialTheme.typography.bodyMedium,
+                        text = "Talk to Partners & Staff",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Text(
+                        text = "Select any firm member to start a secure direct chat",
+                        style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-            } else {
-                LazyColumn(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    items(targetUsers) { user ->
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = CardDefaults.cardColors(
-                                containerColor = MaterialTheme.colorScheme.surface
-                            ),
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(12.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
+
+                val targetUsers = remember(employees, currentUser, messages) {
+                    val contactedUserIds = messages
+                        .filter { it.sender_uuid == currentUser.uuid || it.recipient_uuid == currentUser.uuid }
+                        .map { if (it.sender_uuid == currentUser.uuid) it.recipient_uuid else it.sender_uuid }
+                        .toSet()
+                    employees.filter { it.uuid != currentUser.uuid && contactedUserIds.contains(it.uuid) }
+                }
+
+                if (targetUsers.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "No recent chats. Start a new chat from the bottom right.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(targetUsers) { user ->
+                            Card(
+                                onClick = { activeChatUser = user },
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = MaterialTheme.colorScheme.surface
+                                ),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
                             ) {
                                 Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                    modifier = Modifier.weight(1f)
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(12.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Surface(
-                                        modifier = Modifier.size(40.dp),
-                                        shape = CircleShape,
-                                        color = if (user.role == "Manager") MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.primaryContainer
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                        modifier = Modifier.weight(1f)
                                     ) {
-                                        Box(contentAlignment = Alignment.Center) {
+                                        Surface(
+                                            modifier = Modifier.size(40.dp),
+                                            shape = CircleShape,
+                                            color = if (user.role == "Manager") MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.primaryContainer
+                                        ) {
+                                            Box(contentAlignment = Alignment.Center) {
+                                                Text(
+                                                    text = (user.first_name ?: "").take(2).uppercase(),
+                                                    style = MaterialTheme.typography.bodyMedium,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = if (user.role == "Manager") MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onPrimaryContainer
+                                                )
+                                            }
+                                        }
+
+                                        Column {
                                             Text(
-                                                text = (user.first_name ?: "").take(2).uppercase(),
+                                                text = user.first_name ?: "",
                                                 style = MaterialTheme.typography.bodyMedium,
-                                                fontWeight = FontWeight.Bold,
-                                                color = if (user.role == "Manager") MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onPrimaryContainer
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                            Text(
+                                                text = "${user.role} • ${user.designation ?: ""}",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
                                             )
                                         }
                                     }
 
-                                    Column {
-                                        Text(
-                                            text = user.first_name ?: "",
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            fontWeight = FontWeight.Bold
-                                        )
-                                        Text(
-                                            text = "${user.role} • ${user.designation ?: ""}",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-                                }
-
-                                Row(
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
                                     if (isManager) {
                                         Button(
                                             onClick = {
@@ -3038,22 +3042,50 @@ fun TalkToScreen(viewModel: OnSiteViewModel, currentUser: Employee, isManager: B
                                             Text("Summon", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                         }
                                     }
-
-                                    OutlinedButton(
-                                        onClick = { activeChatUser = user },
-                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                                        modifier = Modifier.height(36.dp)
-                                    ) {
-                                        Icon(Icons.Default.Chat, contentDescription = null, modifier = Modifier.size(16.dp))
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text("Chat", fontSize = 12.sp)
-                                    }
                                 }
                             }
                         }
                     }
                 }
             }
+
+            FloatingActionButton(
+                onClick = { showAllUsersDialog = true },
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(16.dp)
+            ) {
+                Icon(Icons.Default.Chat, contentDescription = "New Chat")
+            }
+        }
+
+        if (showAllUsersDialog) {
+            AlertDialog(
+                onDismissRequest = { showAllUsersDialog = false },
+                title = { Text("Start a New Chat") },
+                text = {
+                    LazyColumn {
+                        items(employees.filter { it.uuid != currentUser.uuid }) { user ->
+                            TextButton(
+                                onClick = { 
+                                    activeChatUser = user
+                                    showAllUsersDialog = false 
+                                },
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                            ) {
+                                Text(
+                                    text = "${user.first_name ?: ""} (${user.email})",
+                                    textAlign = TextAlign.Start,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { showAllUsersDialog = false }) { Text("Cancel") }
+                }
+            )
         }
     } else {
         // Active Chat Screen with the selected user
@@ -3190,19 +3222,41 @@ fun TalkToScreen(viewModel: OnSiteViewModel, currentUser: Employee, isManager: B
                         }
                     }
 
-                    if (isManager) {
-                        Button(
-                            onClick = {
-                                viewModel.sendSummon(otherUser.uuid)
-                                android.widget.Toast.makeText(context, "Summon issued to ${otherUser.first_name ?: "Unknown"}!", android.widget.Toast.LENGTH_SHORT).show()
-                            },
-                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                            modifier = Modifier.height(36.dp)
-                        ) {
-                            Icon(Icons.Default.Campaign, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Summon", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (isManager) {
+                            Button(
+                                onClick = {
+                                    viewModel.sendSummon(otherUser.uuid)
+                                    android.widget.Toast.makeText(context, "Summon issued to ${otherUser.first_name ?: "Unknown"}!", android.widget.Toast.LENGTH_SHORT).show()
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                                modifier = Modifier.height(36.dp)
+                            ) {
+                                Icon(Icons.Default.Campaign, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Summon", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+
+                        var showChatOptions by remember { mutableStateOf(false) }
+                        Box {
+                            IconButton(onClick = { showChatOptions = true }) {
+                                Icon(Icons.Default.MoreVert, contentDescription = "Chat Options")
+                            }
+                            DropdownMenu(
+                                expanded = showChatOptions,
+                                onDismissRequest = { showChatOptions = false }
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text("Delete chats") },
+                                    onClick = {
+                                        viewModel.deleteChatWithUser(otherUser.uuid)
+                                        showChatOptions = false
+                                        activeChatUser = null
+                                    }
+                                )
+                            }
                         }
                     }
                 }

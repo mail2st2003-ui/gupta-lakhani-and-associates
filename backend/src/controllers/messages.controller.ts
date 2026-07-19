@@ -35,4 +35,14 @@ export class MessagesController {
       res.status(400).json({ error: error.message });
     }
   };
+
+  deleteUserMessages = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { userUuid, otherUuid } = req.params;
+      await this.messagesService.deleteMessagesBetween(userUuid as string, otherUuid as string);
+      res.status(200).json({ message: 'Chats deleted successfully' });
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  };
 }

@@ -10,4 +10,8 @@ export class MessagesService {
   async getMessagesBetween(userUuid: string, otherUuid: string) {
     return this.messagesRepository.getMessagesBetween(userUuid, otherUuid);
   }
+
+  async deleteMessagesBetween(userUuid: string, otherUuid: string) {
+    return this.messagesRepository.deleteMessagesBetween(userUuid, otherUuid);
+  }
 }

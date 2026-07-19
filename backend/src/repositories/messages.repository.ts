@@ -37,4 +37,12 @@ export class MessagesRepository {
     if (error) throw error;
     return data.reverse();
   }
+
+  async deleteMessagesBetween(user1Uuid: string, user2Uuid: string) {
+    const { error } = await supabase
+      .from('messages')
+      .delete()
+      .or(`and(sender_uuid.eq.${user1Uuid},recipient_uuid.eq.${user2Uuid}),and(sender_uuid.eq.${user2Uuid},recipient_uuid.eq.${user1Uuid})`);
+    if (error) throw error;
+  }
 }

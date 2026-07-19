@@ -11,6 +11,8 @@ const dotenv_1 = __importDefault(require("dotenv"));
 const auth_routes_1 = __importDefault(require("./routes/auth.routes"));
 const tasks_routes_1 = __importDefault(require("./routes/tasks.routes"));
 const leaves_routes_1 = __importDefault(require("./routes/leaves.routes"));
+const todos_routes_1 = __importDefault(require("./routes/todos.routes"));
+const messages_routes_1 = __importDefault(require("./routes/messages.routes"));
 dotenv_1.default.config();
 const app = (0, express_1.default)();
 app.use(express_1.default.json({ limit: '10mb' }));
@@ -21,6 +23,8 @@ app.use((0, morgan_1.default)('dev'));
 app.use('/api/auth', auth_routes_1.default);
 app.use('/api/tasks', tasks_routes_1.default);
 app.use('/api/leaves', leaves_routes_1.default);
+app.use('/api/todos', todos_routes_1.default);
+app.use('/api/messages', messages_routes_1.default);
 // Health check
 app.get('/health', (req, res) => {
     res.status(200).json({ status: 'OK', timestamp: new Date().toISOString() });

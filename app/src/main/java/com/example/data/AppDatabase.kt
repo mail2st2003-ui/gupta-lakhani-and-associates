@@ -103,6 +103,12 @@ interface AppDao {
     @Query("SELECT * FROM system_alerts ORDER BY timestamp DESC")
     suspend fun getAllAlertsDirect(): List<SystemAlert>
 
+    @Query("DELETE FROM messages WHERE (sender_uuid = :user1 AND recipient_uuid = :user2) OR (sender_uuid = :user2 AND recipient_uuid = :user1)")
+    suspend fun deleteMessagesBetween(user1: String, user2: String)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertSystemAlerts(alerts: List<SystemAlert>)
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAlert(alert: SystemAlert)
 
@@ -240,8 +246,16 @@ class OnSiteRepository(private val dao: AppDao) {
         dao.deleteTodoItemById(uuid)
     }
 
-    suspend fun insertMessage(message: Message) {
-        dao.insertMessage(message)
+    suspend fun insertMessage(msg: Message) {
+        dao.insertMessage(msg)
+    }
+
+    suspend fun deleteMessagesBetween(user1: String, user2: String) {
+        dao.deleteMessagesBetween(user1, user2)
+    }
+
+    suspend fun insertSystemAlerts(alerts: List<SystemAlert>) {
+        dao.insertSystemAlerts(alerts)
     }
 
     suspend fun insertAlert(alert: SystemAlert) {

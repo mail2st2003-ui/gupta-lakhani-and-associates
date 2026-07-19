@@ -13,6 +13,7 @@ import retrofit2.http.PUT
 import retrofit2.http.Path
 import retrofit2.http.Query
 import retrofit2.http.POST
+import retrofit2.http.DELETE
 import java.util.concurrent.TimeUnit
 
 // Models
@@ -218,4 +219,10 @@ interface MessagesApiService {
         @Path("userUuid") userUuid: String,
         @Path("otherUuid") otherUuid: String
     ): List<com.example.data.Message>
+
+    @DELETE("api/messages/{userUuid}/{otherUuid}")
+    suspend fun deleteMessages(
+        @Path("userUuid") userUuid: String,
+        @Path("otherUuid") otherUuid: String
+    )
 }

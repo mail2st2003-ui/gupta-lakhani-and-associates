@@ -1,58 +1,61 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.LeavesService = void 0;
-const supabase_1 = require("../config/supabase");
+const leaves_repository_1 = require("../repositories/leaves.repository");
 class LeavesService {
+    leavesRepository = new leaves_repository_1.LeavesRepository();
     async getLeaves(userUuid) {
-        let query = supabase_1.supabase.from('leave_requests').select('*').order('created_at', { ascending: false });
-        if (userUuid) {
-            query = query.eq('user_uuid', userUuid);
-        }
-        const { data, error } = await query;
-        if (error)
-            throw error;
-        return data;
+        const leaves = await this.leavesRepository.getLeaves(userUuid);
+        return leaves.map((l) => {
+            // Safely convert BIGINT timestamp back to YYYY-MM-DD string
+            const start = new Date(Number(l.start_date));
+            const end = new Date(Number(l.end_date));
+            return {
+                ...l,
+                start_date: start.toISOString().split('T')[0],
+                end_date: end.toISOString().split('T')[0]
+            };
+        });
+    }
+    async checkOverlap(userUuid, startDate, endDate, excludeLeaveUuid) {
+        const overlaps = await this.leavesRepository.checkOverlap(userUuid, startDate, endDate, excludeLeaveUuid);
+        return overlaps.length > 0;
     }
     async createLeave(leaveData) {
         const dbData = {
             uuid: leaveData.uuid || leaveData.id,
             user_uuid: leaveData.user_uuid || leaveData.employeeId,
             reason: leaveData.reason,
-            start_date: leaveData.start_date || leaveData.startDate,
-            end_date: leaveData.end_date || leaveData.endDate,
-            status: leaveData.status || 'Pending',
-            timestamp: leaveData.timestamp || Date.now(),
-            comment: leaveData.comment || leaveData.responseComment || ''
+            start_date: new Date(leaveData.start_date || leaveData.startDate).getTime() || 0,
+            end_date: new Date(leaveData.end_date || leaveData.endDate).getTime() || 0,
+            status: leaveData.status || 'Pending'
         };
-        const managerUuid = leaveData.manager_uuid || leaveData.managerUuid;
-        if (managerUuid)
-            dbData.manager_uuid = managerUuid;
-        const { data, error } = await supabase_1.supabase
-            .from('leave_requests')
-            .insert([dbData])
-            .select()
-            .single();
-        if (error)
-            throw error;
-        return data;
+        const result = await this.leavesRepository.createLeave(dbData);
+        return {
+            ...result,
+            start_date: new Date(Number(result.start_date)).toISOString().split('T')[0],
+            end_date: new Date(Number(result.end_date)).toISOString().split('T')[0]
+        };
     }
     async updateLeave(leaveUuid, updateData) {
         const dbData = {};
         if (updateData.status !== undefined)
             dbData.status = updateData.status;
-        if (updateData.comment !== undefined)
-            dbData.comment = updateData.comment;
-        if (updateData.manager_uuid !== undefined)
-            dbData.manager_uuid = updateData.manager_uuid || null;
-        const { data, error } = await supabase_1.supabase
-            .from('leave_requests')
-            .update(dbData)
-            .eq('uuid', leaveUuid)
-            .select()
-            .single();
-        if (error)
-            throw error;
-        return data;
+        if (updateData.reason !== undefined)
+            dbData.reason = updateData.reason;
+        if (updateData.start_date !== undefined)
+            dbData.start_date = new Date(updateData.start_date).getTime() || 0;
+        if (updateData.end_date !== undefined)
+            dbData.end_date = new Date(updateData.end_date).getTime() || 0;
+        const result = await this.leavesRepository.updateLeave(leaveUuid, dbData);
+        return {
+            ...result,
+            start_date: new Date(Number(result.start_date)).toISOString().split('T')[0],
+            end_date: new Date(Number(result.end_date)).toISOString().split('T')[0]
+        };
+    }
+    async deleteLeave(leaveUuid) {
+        return this.leavesRepository.deleteLeave(leaveUuid);
     }
 }
 exports.LeavesService = LeavesService;

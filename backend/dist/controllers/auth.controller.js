@@ -19,6 +19,16 @@ class AuthController {
             res.status(400).json({ error: error.message });
         }
     };
+    getUserProfile = async (req, res) => {
+        try {
+            const userUuid = String(req.params.userUuid);
+            const data = await this.authService.getUserProfile(userUuid);
+            res.status(200).json(data);
+        }
+        catch (error) {
+            res.status(400).json({ error: error.message });
+        }
+    };
     updateProfile = async (req, res) => {
         try {
             const userUuid = String(req.params.userUuid);
@@ -159,6 +169,15 @@ class AuthController {
             }
             const data = await this.authService.disable2FA(email);
             res.status(200).json(data);
+        }
+        catch (error) {
+            res.status(400).json({ error: error.message });
+        }
+    };
+    getAllUsers = async (req, res) => {
+        try {
+            const users = await this.authService.getAllUsers();
+            res.status(200).json(users);
         }
         catch (error) {
             res.status(400).json({ error: error.message });

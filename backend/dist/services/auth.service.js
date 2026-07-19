@@ -40,7 +40,6 @@ exports.AuthService = void 0;
 const user_repository_1 = require("../repositories/user.repository");
 const otplib = __importStar(require("otplib"));
 const authenticator = otplib.authenticator;
-authenticator.options = { window: 2 };
 const qrcode_1 = __importDefault(require("qrcode"));
 // @ts-ignore
 const SibApiV3Sdk = __importStar(require("sib-api-v3-sdk"));
@@ -98,30 +97,30 @@ class AuthService extends base_service_1.BaseService {
             role: role || 'Staff'
         });
         // 2. Create detailed profile
-        try {
-            await this.userRepository.createDetailedProfile({
-                uuid: this.generateUUID(),
-                user_uuid: userUuid,
-                first_name: resolvedFirstName,
-                middle_name: resolvedMiddleName,
-                last_name: resolvedLastName,
-                dob: dob || '',
-                father_name: resolvedFatherName,
-                mother_name: resolvedMotherName,
-                permanent_address: resolvedPermanentAddress,
-                current_address: resolvedCurrentAddress,
-                emergency_contact: resolvedEmergencyContact,
-                contact: resolvedContact,
-                official_email: normalizedEmail,
-                personal_email: normalizedEmail,
-                blood_group: blood_group || '',
-                designation: resolvedDesignation
-            });
-        }
-        catch (profileError) {
-            console.error('Failed to create detailed profile:', profileError);
-        }
+        await this.userRepository.createDetailedProfile({
+            uuid: this.generateUUID(),
+            user_uuid: userUuid,
+            first_name: resolvedFirstName,
+            middle_name: resolvedMiddleName,
+            last_name: resolvedLastName,
+            dob: dob || null,
+            father_name: resolvedFatherName,
+            mother_name: resolvedMotherName,
+            permanent_address: resolvedPermanentAddress,
+            current_address: resolvedCurrentAddress,
+            contact: resolvedContact,
+            official_email: normalizedEmail,
+            personal_email: normalizedEmail,
+            blood_group: blood_group || null,
+            designation: resolvedDesignation
+        });
         return newUser;
+    }
+    async getUserProfile(userUuid) {
+        const profile = await this.userRepository.getUserByUuid(userUuid);
+        if (!profile)
+            throw new Error('User not found');
+        return profile;
     }
     async updateProfile(userUuid, profileData) {
         return this.userRepository.upsertDetailedProfile({
@@ -140,7 +139,6 @@ class AuthService extends base_service_1.BaseService {
             personal_email: profileData.personal_email || '',
             permanent_address: profileData.permanent_address || '',
             current_address: profileData.current_address || '',
-            emergency_contact: profileData.emergency_contact || '',
             profile_image: profileData.profile_image || null,
             designation: profileData.designation || ''
         });
@@ -214,8 +212,7 @@ class AuthService extends base_service_1.BaseService {
         if (!authUser)
             throw new Error('User not found');
         const hashedPassword = await bcryptjs_1.default.hash(newPassword, 10);
-        // You would typically have a repository method to update password
-        // await this.userRepository.updatePassword(authUser.uuid, hashedPassword);
+        await this.userRepository.updatePassword(authUser.uuid, hashedPassword);
         otpStore.delete(normalizedEmail);
         return { message: 'Password reset successfully' };
     }
@@ -240,8 +237,8 @@ class AuthService extends base_service_1.BaseService {
             pending2FASecrets.delete(normalizedEmail);
             throw new Error('2FA setup expired. Please start again.');
         }
-        const cleanToken = String(token || '').replace(/\s+/g, '');
-        const isValid = authenticator.check(cleanToken, pending.secret);
+        const cleanToken = String(token || '').replace(/\D/g, '');
+        const isValid = authenticator.verify({ token: cleanToken, secret: pending.secret });
         if (!isValid)
             throw new Error('Invalid 2FA code');
         const userProfile = await this.userRepository.getUserByEmail(normalizedEmail);
@@ -263,8 +260,8 @@ class AuthService extends base_service_1.BaseService {
             throw new Error('2FA is not enabled');
         if (!userProfile.mfa_secret)
             throw new Error('2FA secret is missing. Please set up 2FA again.');
-        const cleanToken = String(token || '').replace(/\s+/g, '');
-        const isValidToken = authenticator.check(cleanToken, userProfile.mfa_secret);
+        const cleanToken = String(token || '').replace(/\D/g, '');
+        const isValidToken = authenticator.verify({ token: cleanToken, secret: userProfile.mfa_secret });
         if (!isValidToken)
             throw new Error('Invalid 2FA code');
         const jwtToken = jsonwebtoken_1.default.sign({ uuid: userProfile.uuid, email: userProfile.email, role: userProfile.role }, process.env.JWT_SECRET || 'fallback-secret-key', { expiresIn: '30d' });
@@ -284,6 +281,9 @@ class AuthService extends base_service_1.BaseService {
         pending2FASecrets.delete(normalizedEmail);
         await this.userRepository.update2FA(userProfile.uuid, false, null);
         return { success: true, message: '2FA disabled successfully' };
+    }
+    async getAllUsers() {
+        return this.userRepository.getAllUsers();
     }
 }
 exports.AuthService = AuthService;

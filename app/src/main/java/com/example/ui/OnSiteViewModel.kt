@@ -1294,6 +1294,23 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    fun deleteChatWithUser(otherUserId: String) {
+        val user = _currentUser.value ?: return
+        viewModelScope.launch {
+            // Delete locally
+            repository.deleteMessagesBetween(user.uuid, otherUserId)
+            
+            // Try deleting remotely
+            if (!_isOfflineMode.value) {
+                try {
+                    com.example.api.ApiClient.messagesService.deleteMessages(user.uuid, otherUserId)
+                } catch (e: Exception) {
+                    Log.e("OnSiteViewModel", "Failed to delete chat remotely", e)
+                }
+            }
+        }
+    }
+
     // ROT13 text cipher + Base64 conversion for simulated visual AES encryption
     fun encryptMessage(text: String): String {
         val rot13 = text.map { char ->
