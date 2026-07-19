@@ -1828,15 +1828,23 @@ fun EmployeeOnSiteScreen(
     }
 
     LaunchedEffect(Unit) {
+        val permissionsToRequest = mutableListOf(
+            android.Manifest.permission.ACCESS_FINE_LOCATION,
+            android.Manifest.permission.ACCESS_COARSE_LOCATION
+        )
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            permissionsToRequest.add(android.Manifest.permission.POST_NOTIFICATIONS)
+        }
+
         if (fineGranted || coarseGranted) {
             locationPermissionGranted = true
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                if (androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                    permissionLauncher.launch(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS))
+                }
+            }
         } else {
-            permissionLauncher.launch(
-                arrayOf(
-                    android.Manifest.permission.ACCESS_FINE_LOCATION,
-                    android.Manifest.permission.ACCESS_COARSE_LOCATION
-                )
-            )
+            permissionLauncher.launch(permissionsToRequest.toTypedArray())
         }
     }
 
@@ -5892,15 +5900,41 @@ fun ProfilePhotoUploadDialog(
 
     val galleryLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
-    ) { uri: Uri? ->
+    ) { uri: android.net.Uri? ->
         if (uri != null) {
             try {
+                isUploading = true
                 val inputStream = context.contentResolver.openInputStream(uri)
-                val bytes = inputStream?.readBytes()
-                if (bytes != null) {
-                    isUploading = true
-                    // Standard Base64 encoding
+                val originalBitmap = android.graphics.BitmapFactory.decodeStream(inputStream)
+                inputStream?.close()
+                
+                if (originalBitmap != null) {
+                    // Scale down the bitmap to prevent OOM and Database CursorWindow crashes
+                    val maxDim = 500f
+                    val scale = kotlin.math.min(maxDim / originalBitmap.width, maxDim / originalBitmap.height)
+                    val scaledBitmap = if (scale < 1f) {
+                        android.graphics.Bitmap.createScaledBitmap(
+                            originalBitmap, 
+                            (originalBitmap.width * scale).toInt(), 
+                            (originalBitmap.height * scale).toInt(), 
+                            true
+                        )
+                    } else {
+                        originalBitmap
+                    }
+
+                    // Compress to JPEG to save space
+                    val outputStream = java.io.ByteArrayOutputStream()
+                    scaledBitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 75, outputStream)
+                    val bytes = outputStream.toByteArray()
+
+                    // Encode to Base64
                     val base64String = android.util.Base64.encodeToString(bytes, android.util.Base64.DEFAULT)
+                    
+                    if (scaledBitmap != originalBitmap) {
+                        originalBitmap.recycle()
+                    }
+
                     onPhotoSelected(base64String) { success ->
                         isUploading = false
                         if (success) {
@@ -5910,7 +5944,8 @@ fun ProfilePhotoUploadDialog(
                         }
                     }
                 } else {
-                    android.widget.Toast.makeText(context, "Failed to read image data.", android.widget.Toast.LENGTH_SHORT).show()
+                    isUploading = false
+                    android.widget.Toast.makeText(context, "Failed to decode image.", android.widget.Toast.LENGTH_SHORT).show()
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
