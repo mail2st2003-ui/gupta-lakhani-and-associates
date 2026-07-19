@@ -596,7 +596,7 @@ fun LoginSelectionScreen(
     var regMobile by remember { mutableStateOf("") }
     var regPassword by remember { mutableStateOf("") }
     var regRole by remember { mutableStateOf("Employee") } // "Employee" or "Manager"
-    var regDept by remember { mutableStateOf("Article") }
+    var regDept by remember { mutableStateOf("") }
     var regCustomId by remember { mutableStateOf("") }
     var regError by remember { mutableStateOf("") }
     var isRegPasswordVisible by remember { mutableStateOf(false) }
@@ -1091,51 +1091,7 @@ fun LoginSelectionScreen(
                 modifier = Modifier.fillMaxWidth().testTag("reg_mobile_input")
             )
 
-            Spacer(modifier = Modifier.height(14.dp))
 
-            // Designation (replaces Role and Department)
-            Text(
-                text = "Account Designation *",
-                style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.align(Alignment.Start).padding(bottom = 6.dp)
-            )
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                departments.forEach { dept ->
-                    val isSelected = regDept == dept
-                    Surface(
-                        onClick = {
-                            regDept = dept
-                            regRole = if (dept == "Partner") "Manager" else "Employee"
-                        },
-                        color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
-                        border = BorderStroke(1.dp, if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant),
-                        shape = RoundedCornerShape(8.dp),
-                        modifier = Modifier
-                            .weight(1f)
-                            .testTag("dept_chip_" + dept)
-                    ) {
-                        Box(
-                            modifier = Modifier.padding(vertical = 12.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = dept,
-                                style = MaterialTheme.typography.labelLarge,
-                                fontWeight = FontWeight.Bold,
-                                color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
-                            )
-                        }
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(14.dp))
 
             // PERSONAL DETAILS INPUTS SECTION
             Card(

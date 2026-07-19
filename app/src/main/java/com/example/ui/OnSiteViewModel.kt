@@ -1456,6 +1456,13 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
         try {
             val allUsers = com.example.api.ApiClient.authService.getAllUsers()
             if (allUsers.isNotEmpty()) {
+                val local = repository.getAllEmployeesDirect()
+                val remoteUuids = allUsers.map { it.uuid }.toSet()
+                local.forEach { emp ->
+                    if (emp.uuid !in remoteUuids) {
+                        repository.deleteEmployee(emp.uuid)
+                    }
+                }
                 repository.insertEmployees(allUsers)
             }
         } catch (e: Exception) {
