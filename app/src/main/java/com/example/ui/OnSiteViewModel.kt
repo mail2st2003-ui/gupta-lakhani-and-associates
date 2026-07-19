@@ -1451,11 +1451,18 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    private suspend fun fetchAllUsersFromServer() {
+    suspend fun fetchAllUsersFromServer() {
         if (_isOfflineMode.value) return
         try {
             val allUsers = com.example.api.ApiClient.authService.getAllUsers()
             if (allUsers.isNotEmpty()) {
+                val local = repository.getAllEmployeesDirect()
+                val remoteUuids = allUsers.map { it.uuid }.toSet()
+                local.forEach { emp ->
+                    if (emp.uuid !in remoteUuids) {
+                        repository.deleteEmployee(emp.uuid)
+                    }
+                }
                 repository.insertEmployees(allUsers)
             }
         } catch (e: Exception) {

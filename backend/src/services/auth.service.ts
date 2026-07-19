@@ -72,28 +72,23 @@ export class AuthService extends BaseService {
     });
 
     // 2. Create detailed profile
-    try {
-      await this.userRepository.createDetailedProfile({
-        uuid: this.generateUUID(),
-        user_uuid: userUuid,
-        first_name: resolvedFirstName,
-        middle_name: resolvedMiddleName,
-        last_name: resolvedLastName,
-        dob: dob || '',
-        father_name: resolvedFatherName,
-        mother_name: resolvedMotherName,
-        permanent_address: resolvedPermanentAddress,
-        current_address: resolvedCurrentAddress,
-        emergency_contact: resolvedEmergencyContact,
-        contact: resolvedContact,
-        official_email: normalizedEmail,
-        personal_email: normalizedEmail,
-        blood_group: blood_group || '',
-        designation: resolvedDesignation
-      });
-    } catch (profileError) {
-      console.error('Failed to create detailed profile:', profileError);
-    }
+    await this.userRepository.createDetailedProfile({
+      uuid: this.generateUUID(),
+      user_uuid: userUuid,
+      first_name: resolvedFirstName,
+      middle_name: resolvedMiddleName,
+      last_name: resolvedLastName,
+      dob: dob || null,
+      father_name: resolvedFatherName,
+      mother_name: resolvedMotherName,
+      permanent_address: resolvedPermanentAddress,
+      current_address: resolvedCurrentAddress,
+      contact: resolvedContact,
+      official_email: normalizedEmail,
+      personal_email: normalizedEmail,
+      blood_group: blood_group || null,
+      designation: resolvedDesignation
+    });
 
     return newUser;
   }
@@ -121,7 +116,6 @@ export class AuthService extends BaseService {
       personal_email: profileData.personal_email || '',
       permanent_address: profileData.permanent_address || '',
       current_address: profileData.current_address || '',
-      emergency_contact: profileData.emergency_contact || '',
       profile_image: profileData.profile_image || null,
       designation: profileData.designation || ''
     });
@@ -214,8 +208,7 @@ export class AuthService extends BaseService {
     if (!authUser) throw new Error('User not found');
 
     const hashedPassword = await bcrypt.hash(newPassword, 10);
-    // You would typically have a repository method to update password
-    // await this.userRepository.updatePassword(authUser.uuid, hashedPassword);
+    await this.userRepository.updatePassword(authUser.uuid, hashedPassword);
     
     otpStore.delete(normalizedEmail);
     return { message: 'Password reset successfully' };

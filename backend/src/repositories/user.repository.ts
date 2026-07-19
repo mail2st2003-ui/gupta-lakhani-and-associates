@@ -109,6 +109,15 @@ export class UserRepository {
     if (error) throw error;
   }
 
+  async updatePassword(uuid: string, hashedPassword: string) {
+    const { error } = await supabase
+      .from('users')
+      .update({ password: hashedPassword })
+      .eq('uuid', uuid);
+
+    if (error) throw error;
+  }
+
   async getAllUsers() {
     const { data, error } = await supabase
       .from('users')
