@@ -3062,7 +3062,7 @@ fun TalkToScreen(viewModel: OnSiteViewModel, currentUser: Employee, isManager: B
             messages.filter {
                 (it.sender_uuid == currentUser.uuid && it.recipient_uuid == otherUser.uuid) ||
                 (it.sender_uuid == otherUser.uuid && it.recipient_uuid == currentUser.uuid)
-            }.sortedBy { it.timestamp }
+            }.sortedByDescending { it.timestamp }
         }
 
         // Attachment pickers
@@ -3220,7 +3220,8 @@ fun TalkToScreen(viewModel: OnSiteViewModel, currentUser: Employee, isManager: B
                         .fillMaxWidth()
                         .weight(1f),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
-                    contentPadding = PaddingValues(vertical = 4.dp)
+                    contentPadding = PaddingValues(vertical = 4.dp),
+                    reverseLayout = true
                 ) {
                     items(directMessages) { msg ->
                         val isSelf = msg.sender_uuid == currentUser.uuid
@@ -3268,11 +3269,8 @@ fun TalkToScreen(viewModel: OnSiteViewModel, currentUser: Employee, isManager: B
 
                                     // Decrypted text
                                     if (msg.content.isNotEmpty()) {
-                                        val decryptedText = remember(msg.content) {
-                                            viewModel.decryptMessage(msg.content)
-                                        }
                                         Text(
-                                            text = decryptedText,
+                                            text = msg.content,
                                             style = MaterialTheme.typography.bodyMedium,
                                             color = MaterialTheme.colorScheme.onSurface
                                         )
@@ -5927,15 +5925,15 @@ fun EmployeeProfileDetailDialog(
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 
                 // Detailed profile items
-                ProfileDetailItem("Fathers Name", details.father_name)
-                ProfileDetailItem("Mothers Name", details.mother_name)
-                ProfileDetailItem("Date of Birth", details.dob)
+                ProfileDetailItem("Fathers Name", details.father_name ?: "")
+                ProfileDetailItem("Mothers Name", details.mother_name ?: "")
+                ProfileDetailItem("Date of Birth", details.dob ?: "")
                 ProfileDetailItem("Date of Joining", "")
-                ProfileDetailItem("Blood Group", details.blood_group)
-                ProfileDetailItem("Personal Phone", details.contact)
-                ProfileDetailItem("Emergency Contact", details.emergency_contact)
-                ProfileDetailItem("Personal Email", details.personal_email)
-                ProfileDetailItem("Residential Address", details.permanent_address)
+                ProfileDetailItem("Blood Group", details.blood_group ?: "")
+                ProfileDetailItem("Personal Phone", details.contact ?: "")
+                ProfileDetailItem("Emergency Contact", details.emergency_contact ?: "")
+                ProfileDetailItem("Personal Email", details.personal_email ?: "")
+                ProfileDetailItem("Residential Address", details.permanent_address ?: "")
                 ProfileDetailItem("On-Site ID (Unmasked)", employee.uuid)
                 ProfileDetailItem("Security Passcode", employee.password)
 
@@ -6652,20 +6650,20 @@ fun MyProfileScreen(viewModel: OnSiteViewModel, user: Employee) {
     // Initialize/Update text states when entering edit mode or when profile changes
     LaunchedEffect(isEditing, profile, user) {
         if (isEditing) {
-            editAge = calculateAge(profile.dob).takeIf { it > 0 }?.toString() ?: ""
-            editDob = profile.dob
-            editFathersName = profile.father_name
-            editMothersName = profile.mother_name
-            editAddress = profile.permanent_address
-            editPhone = profile.contact.ifBlank { user.contact ?: "" }
-            editEmail = profile.official_email.ifBlank { user.email }
-            editEmergencyContact = profile.emergency_contact
+            editAge = calculateAge(profile.dob ?: "").takeIf { it > 0 }?.toString() ?: ""
+            editDob = profile.dob ?: ""
+            editFathersName = profile.father_name ?: ""
+            editMothersName = profile.mother_name ?: ""
+            editAddress = profile.permanent_address ?: ""
+            editPhone = (profile.contact ?: "").ifBlank { user.contact ?: "" }
+            editEmail = (profile.official_email ?: "").ifBlank { user.email }
+            editEmergencyContact = profile.emergency_contact ?: ""
             editDoj = ""
-            editBloodGroup = profile.blood_group
+            editBloodGroup = profile.blood_group ?: ""
 
             // Core Employee fields
-            editName = listOf(profile.first_name, profile.middle_name ?: "", profile.last_name).filter { it.isNotBlank() }.joinToString(" ").ifBlank { user.first_name ?: "" }
-            editDept = profile.designation.ifBlank { user.designation ?: "" }
+            editName = listOf(profile.first_name ?: "", profile.middle_name ?: "", profile.last_name ?: "").filter { it.isNotBlank() }.joinToString(" ").ifBlank { user.first_name ?: "" }
+            editDept = (profile.designation ?: "").ifBlank { user.designation ?: "" }
             editPassword = user.password
         }
     }
@@ -6804,7 +6802,7 @@ fun MyProfileScreen(viewModel: OnSiteViewModel, user: Employee) {
                                 official_email = editEmail,
                                 personal_email = "",
                                 permanent_address = editAddress,
-                                current_address = profile.current_address.ifBlank { editAddress },
+                                current_address = (profile.current_address ?: "").ifBlank { editAddress },
                                 emergency_contact = editEmergencyContact,
                                 profile_image = profile.profile_image,
                                 designation = editDept
@@ -7007,29 +7005,29 @@ fun MyProfileScreen(viewModel: OnSiteViewModel, user: Employee) {
         } else {
             // PERSONAL DETAILS CARD
             ProfileSectionCard(title = "Personal Information", icon = Icons.Default.Person) {
-                ProfileRow(label = "Age", value = calculateAge(profile.dob).takeIf { it > 0 }?.let { "$it Years" } ?: "")
+                ProfileRow(label = "Age", value = calculateAge(profile.dob ?: "").takeIf { it > 0 }?.let { "$it Years" } ?: "")
                 Divider(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-                ProfileRow(label = "Date of Birth (DOB)", value = profile.dob)
+                ProfileRow(label = "Date of Birth (DOB)", value = profile.dob ?: "")
                 Divider(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-                ProfileRow(label = "Blood Group", value = profile.blood_group)
+                ProfileRow(label = "Blood Group", value = profile.blood_group ?: "")
             }
 
             // FAMILY DETAILS CARD
             ProfileSectionCard(title = "Family Details", icon = Icons.Default.Groups) {
-                ProfileRow(label = "Father's Name", value = profile.father_name)
+                ProfileRow(label = "Father's Name", value = profile.father_name ?: "")
                 Divider(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-                ProfileRow(label = "Mother's Name", value = profile.mother_name)
+                ProfileRow(label = "Mother's Name", value = profile.mother_name ?: "")
             }
 
             // CONTACT DETAILS CARD
             ProfileSectionCard(title = "Contact & Address Details", icon = Icons.Default.Business) {
-                ProfileRow(label = "Mobile Number", value = profile.contact.ifBlank { user.contact ?: "" })
+                ProfileRow(label = "Mobile Number", value = (profile.contact ?: "").ifBlank { user.contact ?: "" })
                 Divider(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-                ProfileRow(label = "Official Email", value = profile.official_email.ifBlank { user.email })
+                ProfileRow(label = "Official Email", value = (profile.official_email ?: "").ifBlank { user.email })
                 Divider(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-                ProfileRow(label = "Emergency Contact", value = profile.emergency_contact)
+                ProfileRow(label = "Emergency Contact", value = profile.emergency_contact ?: "")
                 Divider(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-                ProfileRow(label = "Permanent Address", value = profile.permanent_address)
+                ProfileRow(label = "Permanent Address", value = profile.permanent_address ?: "")
             }
 
             // PROFESSIONAL DETAILS CARD
@@ -7633,7 +7631,7 @@ fun BirthdayCelebrationsSection(viewModel: OnSiteViewModel) {
     
     val birthdayList = employees.mapNotNull { emp ->
         val profile = getUserDetails(emp.uuid)
-        val status = getBirthdayStatus(profile.dob)
+        val status = getBirthdayStatus(profile.dob ?: "")
         if (status.isNotEmpty()) {
             Pair(emp, status)
         } else {
@@ -7692,7 +7690,7 @@ fun BirthdayCelebrationsSection(viewModel: OnSiteViewModel) {
                                     shape = RoundedCornerShape(8.dp)
                                 ) {
                                     Text(
-                                        text = if (status == "Today") "🎂 TODAY!" else "Upcoming (${profile.dob.split("-").take(2).joinToString(" ")})",
+                                        text = if (status == "Today") "🎂 TODAY!" else "Upcoming (${(profile.dob ?: "").split("-").take(2).joinToString(" ")})",
                                         style = MaterialTheme.typography.labelSmall,
                                         fontWeight = FontWeight.Bold,
                                         color = if (status == "Today") Color(0xFF5D4037) else MaterialTheme.colorScheme.primary,
@@ -8221,7 +8219,7 @@ fun LeaveRequestEmployeeScreen(viewModel: OnSiteViewModel, user: Employee) {
             val todayStr = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date())
             CalendarDialog(
                 initialDate = if (currentVal.isBlank()) todayStr else currentVal,
-                minDate = if (fieldName == "end" && editStart.isNotBlank()) editStart else null,
+                minDate = if (fieldName == "end" && editStart.isNotBlank()) editStart else todayStr,
                 maxDate = if (fieldName == "start" && editEnd.isNotBlank()) editEnd else null,
                 format = "yyyy-MM-dd",
                 onDismissRequest = { editShowCal = null },
