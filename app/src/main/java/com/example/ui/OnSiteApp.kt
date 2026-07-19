@@ -9,6 +9,8 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -206,12 +208,24 @@ fun OnSiteApp(viewModel: OnSiteViewModel = viewModel()) {
                                 color = if (isManager) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondary
                             ) {
                                 Box(contentAlignment = Alignment.Center) {
-                                    Text(
-                                        text = currentUser!!.first_name?.take(2)?.uppercase() ?: "??",
-                                        color = Color.White,
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 12.sp
-                                    )
+                                    val bitmap = remember(currentUser!!.profile_image) {
+                                        currentUser!!.profile_image?.let { decodeBase64ToBitmap(it) }
+                                    }
+                                    if (bitmap != null) {
+                                        Image(
+                                            bitmap = bitmap,
+                                            contentDescription = "Profile Picture",
+                                            contentScale = ContentScale.Crop,
+                                            modifier = Modifier.fillMaxSize()
+                                        )
+                                    } else {
+                                        Text(
+                                            text = currentUser!!.first_name?.take(2)?.uppercase() ?: "??",
+                                            color = Color.White,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 12.sp
+                                        )
+                                    }
                                 }
                             }
                             Spacer(modifier = Modifier.width(10.dp))
@@ -224,9 +238,8 @@ fun OnSiteApp(viewModel: OnSiteViewModel = viewModel()) {
                                 )
                                 DesignationBadge(empId = currentUser!!.uuid)
                                 Text(
-                                    text = "ID: ${currentUser!!.uuid}",
+                                    text = currentUser!!.email,
                                     style = MaterialTheme.typography.labelSmall,
-                                    fontFamily = FontFamily.Monospace,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
@@ -3242,36 +3255,100 @@ fun TalkToScreen(viewModel: OnSiteViewModel, currentUser: Employee, isManager: B
             ) {
                 Icon(Icons.Default.Chat, contentDescription = "New Chat")
             }
-        }
-
-        if (showAllUsersDialog) {
-            AlertDialog(
-                onDismissRequest = { showAllUsersDialog = false },
-                title = { Text("Start a New Chat") },
-                text = {
-                    LazyColumn {
+            AnimatedVisibility(
+            visible = showAllUsersDialog,
+            enter = slideInHorizontally(initialOffsetX = { it }) + fadeIn(),
+            exit = slideOutHorizontally(targetOffsetX = { it }) + fadeOut(),
+            modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight().fillMaxWidth(0.9f)
+        ) {
+            Surface(
+                modifier = Modifier.fillMaxSize(),
+                color = MaterialTheme.colorScheme.surface,
+                shadowElevation = 8.dp
+            ) {
+                Column(modifier = Modifier.fillMaxSize()) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(MaterialTheme.colorScheme.surfaceVariant)
+                            .padding(horizontal = 8.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        IconButton(onClick = { showAllUsersDialog = false }) {
+                            Icon(Icons.Filled.ArrowBack, contentDescription = "Close")
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Start a New Chat",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize()
+                    ) {
                         items(employees.filter { it.uuid != currentUser.uuid }) { user ->
-                            TextButton(
-                                onClick = { 
-                                    activeChatUser = user
-                                    showAllUsersDialog = false 
-                                },
-                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { 
+                                        activeChatUser = user
+                                        showAllUsersDialog = false 
+                                    }
+                                    .padding(16.dp),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text(
-                                    text = "${user.first_name ?: ""} (${user.email})",
-                                    textAlign = TextAlign.Start,
-                                    modifier = Modifier.fillMaxWidth()
-                                )
+                                Box(
+                                    modifier = Modifier
+                                        .size(48.dp)
+                                        .clip(CircleShape)
+                                        .background(MaterialTheme.colorScheme.primaryContainer),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    val bitmap = remember(user.profile_image) {
+                                        user.profile_image?.let { decodeBase64ToBitmap(it) }
+                                    }
+                                    if (bitmap != null) {
+                                        Image(
+                                            bitmap = bitmap,
+                                            contentDescription = "Profile Picture",
+                                            contentScale = ContentScale.Crop,
+                                            modifier = Modifier.fillMaxSize()
+                                        )
+                                    } else {
+                                        Text(
+                                            text = (user.first_name ?: "").take(2).uppercase(),
+                                            style = MaterialTheme.typography.titleMedium,
+                                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                                        )
+                                    }
+                                }
+                                
+                                Spacer(modifier = Modifier.width(16.dp))
+                                
+                                Column {
+                                    Text(
+                                        text = "${user.first_name ?: ""} ${user.last_name ?: ""}".trim(),
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Text(
+                                        text = user.email,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
                             }
+                            HorizontalDivider()
                         }
                     }
-                },
-                confirmButton = {
-                    TextButton(onClick = { showAllUsersDialog = false }) { Text("Cancel") }
                 }
-            )
+            }
+            }
         }
+        
     } else {
         // Active Chat Screen with the selected user
         val otherUser = activeChatUser!!

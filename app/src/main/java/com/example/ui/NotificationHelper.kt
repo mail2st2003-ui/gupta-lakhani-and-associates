@@ -46,7 +46,7 @@ object NotificationHelper {
         
         // Use R.mipmap.ic_launcher as small icon
         val builder = NotificationCompat.Builder(context, CHANNEL_ID_ALERTS)
-            .setSmallIcon(R.mipmap.ic_launcher)
+            .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle("🚨 URGENT: $title")
             .setContentText(content)
             .setStyle(NotificationCompat.BigTextStyle().bigText(content))
@@ -60,7 +60,7 @@ object NotificationHelper {
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
         val builder = NotificationCompat.Builder(context, CHANNEL_ID_CHECKINS)
-            .setSmallIcon(R.mipmap.ic_launcher)
+            .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle("⚠️ Missed Check-In Alert")
             .setContentText("Hello $employeeName, you have a missed check-in for the $shiftName shift. Please report to a geofenced on-site zone immediately.")
             .setStyle(NotificationCompat.BigTextStyle().bigText("Hello $employeeName, you missed your check-in window for the $shiftName shift. Check-in is required on-site immediately."))

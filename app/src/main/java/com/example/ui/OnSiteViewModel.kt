@@ -1425,11 +1425,16 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
 
     fun completeLogin(user: Employee) {
         viewModelScope.launch {
-            repository.insertEmployees(listOf(user))
-            selectUserSession(user)
+            val safeUser = if ((user.profile_image?.length ?: 0) > 1000000) {
+                user.copy(profile_image = null)
+            } else {
+                user
+            }
+            repository.insertEmployees(listOf(safeUser))
+            selectUserSession(safeUser)
             fetchAllUsersFromServer()
-            fetchUserProfile(user.uuid)
-            syncUserMessages(user.uuid)
+            fetchUserProfile(safeUser.uuid)
+            syncUserMessages(safeUser.uuid)
         }
     }
 
@@ -1437,7 +1442,10 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
         if (_isOfflineMode.value) return
         try {
             val profile = com.example.api.ApiClient.authService.getUserProfile(userUuid)
-            repository.saveUserDetails(profile)
+            val safeProfile = if ((profile.profile_image?.length ?: 0) > 1000000) {
+                profile.copy(profile_image = null)
+            } else profile
+            repository.saveUserDetails(safeProfile)
         } catch (e: Exception) {
             Log.e("OnSiteViewModel", "Failed to fetch user profile", e)
         }
@@ -1448,14 +1456,19 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
         try {
             val allUsers = com.example.api.ApiClient.authService.getAllUsers()
             if (allUsers.isNotEmpty()) {
+                val safeUsers = allUsers.map { user ->
+                    if ((user.profile_image?.length ?: 0) > 1000000) {
+                        user.copy(profile_image = null)
+                    } else user
+                }
                 val local = repository.getAllEmployeesDirect()
-                val remoteUuids = allUsers.map { it.uuid }.toSet()
+                val remoteUuids = safeUsers.map { it.uuid }.toSet()
                 local.forEach { emp ->
                     if (emp.uuid !in remoteUuids) {
                         repository.deleteEmployee(emp.uuid)
                     }
                 }
-                repository.insertEmployees(allUsers)
+                repository.insertEmployees(safeUsers)
             }
         } catch (e: Exception) {
             Log.e("OnSiteViewModel", "Failed to fetch users for Talk To", e)
@@ -1508,7 +1521,12 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
         if (_isOfflineMode.value) return
         try {
             val remoteMsgs = com.example.api.ApiClient.messagesService.getUserMessages(userUuid, otherUuid)
-            remoteMsgs.forEach { msg ->
+            val safeMsgs = remoteMsgs.map { msg ->
+                if ((msg.attachmentData?.length ?: 0) > 1000000) {
+                    msg.copy(attachmentData = null)
+                } else msg
+            }
+            safeMsgs.forEach { msg ->
                 repository.insertMessage(msg)
             }
         } catch (e: Exception) {
@@ -1520,7 +1538,12 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
         if (_isOfflineMode.value) return
         try {
             val remoteMsgs = com.example.api.ApiClient.messagesService.getAllMessagesForUser(userUuid)
-            remoteMsgs.forEach { msg ->
+            val safeMsgs = remoteMsgs.map { msg ->
+                if ((msg.attachmentData?.length ?: 0) > 1000000) {
+                    msg.copy(attachmentData = null)
+                } else msg
+            }
+            safeMsgs.forEach { msg ->
                 repository.insertMessage(msg)
             }
         } catch (e: Exception) {
