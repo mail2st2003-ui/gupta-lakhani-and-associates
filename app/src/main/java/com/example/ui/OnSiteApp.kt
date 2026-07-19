@@ -2938,6 +2938,7 @@ fun TalkToScreen(viewModel: OnSiteViewModel, currentUser: Employee, isManager: B
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 var showExpandedProfile by remember { mutableStateOf(false) }
+                // This state tracks the target user's profile image to expand
                 var expandedTargetProfile by remember { mutableStateOf<Employee?>(null) }
 
                 Row(
