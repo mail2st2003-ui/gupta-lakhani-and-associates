@@ -133,7 +133,7 @@ data class ResetPasswordRequest(
 // Retrofit Client
 object ApiClient {
     // Using the live backend deployed on Render
-    private const val BASE_URL = "https://gupta-lakhani-and-associates.onrender.com/"
+    private const val BASE_URL = "https://gupta-lakhani-and-associates-szv9.onrender.com/"
 
     private val logging = HttpLoggingInterceptor().apply {
         setLevel(HttpLoggingInterceptor.Level.BODY)
