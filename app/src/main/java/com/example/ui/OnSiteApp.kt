@@ -576,8 +576,7 @@ fun LoginSelectionScreen(
 
     // Login Form State
     var rememberMe by remember { mutableStateOf(sharedPreferences.getBoolean("rememberMe", false)) }
-    val savedEmail = sharedPreferences.getString("savedEmail", "") ?: ""
-    val savedPassword = sharedPreferences.getString("savedPassword", "") ?: ""
+    val savedCredentials = sharedPreferences.getStringSet("savedCredentialsSet", emptySet()) ?: emptySet()
     var loginUserId by remember { mutableStateOf("") }
     var loginPassword by remember { mutableStateOf("") }
     var credentialDropdownExpanded by remember { mutableStateOf(false) }
@@ -906,7 +905,7 @@ fun LoginSelectionScreen(
             // User ID field
             ExposedDropdownMenuBox(
                 expanded = credentialDropdownExpanded,
-                onExpandedChange = { if (savedEmail.isNotEmpty()) credentialDropdownExpanded = !credentialDropdownExpanded }
+                onExpandedChange = { if (savedCredentials.isNotEmpty()) credentialDropdownExpanded = !credentialDropdownExpanded }
             ) {
                 OutlinedTextField(
                     value = loginUserId,
@@ -918,19 +917,24 @@ fun LoginSelectionScreen(
                     modifier = Modifier.fillMaxWidth().testTag("login_username_input").menuAnchor()
                 )
                 
-                if (savedEmail.isNotEmpty()) {
+                if (savedCredentials.isNotEmpty()) {
                     ExposedDropdownMenu(
                         expanded = credentialDropdownExpanded,
                         onDismissRequest = { credentialDropdownExpanded = false }
                     ) {
-                        DropdownMenuItem(
-                            text = { Text("Autofill: $savedEmail") },
-                            onClick = {
-                                loginUserId = savedEmail
-                                loginPassword = savedPassword
-                                credentialDropdownExpanded = false
+                        savedCredentials.forEach { cred ->
+                            val parts = cred.split(":", limit = 2)
+                            if (parts.size == 2) {
+                                DropdownMenuItem(
+                                    text = { Text("Autofill: ${parts[0]}") },
+                                    onClick = {
+                                        loginUserId = parts[0]
+                                        loginPassword = parts[1]
+                                        credentialDropdownExpanded = false
+                                    }
+                                )
                             }
-                        )
+                        }
                     }
                 }
             }
@@ -1009,16 +1013,21 @@ fun LoginSelectionScreen(
                         } else if (user != null) {
                             loginError = ""
                             if (rememberMe) {
+                                val currentCreds = sharedPreferences.getStringSet("savedCredentialsSet", emptySet()) ?: emptySet()
+                                val updatedCreds = currentCreds.toMutableSet()
+                                updatedCreds.removeAll { it.startsWith("${loginUserId.trim()}:") }
+                                updatedCreds.add("${loginUserId.trim()}:$loginPassword")
                                 sharedPreferences.edit()
                                     .putBoolean("rememberMe", true)
-                                    .putString("savedEmail", loginUserId.trim())
-                                    .putString("savedPassword", loginPassword)
+                                    .putStringSet("savedCredentialsSet", updatedCreds)
                                     .apply()
                             } else {
+                                val currentCreds = sharedPreferences.getStringSet("savedCredentialsSet", emptySet()) ?: emptySet()
+                                val updatedCreds = currentCreds.toMutableSet()
+                                updatedCreds.removeAll { it.startsWith("${loginUserId.trim()}:") }
                                 sharedPreferences.edit()
                                     .putBoolean("rememberMe", false)
-                                    .remove("savedEmail")
-                                    .remove("savedPassword")
+                                    .putStringSet("savedCredentialsSet", updatedCreds)
                                     .apply()
                             }
                         }
@@ -2922,8 +2931,13 @@ fun TalkToScreen(viewModel: OnSiteViewModel, currentUser: Employee, isManager: B
 
     var activeChatUser by remember { mutableStateOf<Employee?>(null) }
 
+    var isChatsLoading by remember { mutableStateOf(true) }
+
     LaunchedEffect(Unit) {
+        isChatsLoading = true
         viewModel.fetchAllUsersFromServer()
+        viewModel.syncUserMessages(currentUser.uuid)
+        isChatsLoading = false
     }
 
     if (activeChatUser == null) {
@@ -3100,7 +3114,16 @@ fun TalkToScreen(viewModel: OnSiteViewModel, currentUser: Employee, isManager: B
                     employees.filter { it.uuid != currentUser.uuid && contactedUserIds.contains(it.uuid) }
                 }
 
-                if (targetUsers.isEmpty()) {
+                if (isChatsLoading) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator()
+                    }
+                } else if (targetUsers.isEmpty()) {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -3448,18 +3471,12 @@ fun TalkToScreen(viewModel: OnSiteViewModel, currentUser: Employee, isManager: B
                                 )
                             ) {
                                 Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                    // Header: sender and time
+                                    // Header: time
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        horizontalArrangement = Arrangement.End,
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Text(
-                                            text = if (isSelf) "You" else msg.sender_uuid.take(8),
-                                            style = MaterialTheme.typography.labelSmall,
-                                            fontWeight = FontWeight.Bold,
-                                            color = if (isSelf) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondary
-                                        )
                                         Text(
                                             text = formatTime(msg.timestamp),
                                             style = MaterialTheme.typography.labelSmall,

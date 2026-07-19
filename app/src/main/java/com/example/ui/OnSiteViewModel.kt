@@ -1516,7 +1516,7 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    private suspend fun syncUserMessages(userUuid: String) {
+    suspend fun syncUserMessages(userUuid: String) {
         if (_isOfflineMode.value) return
         try {
             val remoteMsgs = com.example.api.ApiClient.messagesService.getAllMessagesForUser(userUuid)
