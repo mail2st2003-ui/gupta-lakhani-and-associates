@@ -2938,6 +2938,7 @@ fun TalkToScreen(viewModel: OnSiteViewModel, currentUser: Employee, isManager: B
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 var showExpandedProfile by remember { mutableStateOf(false) }
+                var expandedTargetProfile by remember { mutableStateOf<Employee?>(null) }
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -3034,6 +3035,62 @@ fun TalkToScreen(viewModel: OnSiteViewModel, currentUser: Employee, isManager: B
                     )
                 }
 
+                if (expandedTargetProfile != null) {
+                    AlertDialog(
+                        onDismissRequest = { expandedTargetProfile = null },
+                        text = {
+                            Column(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(150.dp)
+                                        .clip(CircleShape)
+                                        .background(MaterialTheme.colorScheme.surfaceVariant),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    val targetUser = expandedTargetProfile!!
+                                    val bitmap = remember(targetUser.profile_image) {
+                                        targetUser.profile_image?.let { decodeBase64ToBitmap(it) }
+                                    }
+                                    if (bitmap != null) {
+                                        Image(
+                                            bitmap = bitmap,
+                                            contentDescription = "Target Profile Expanded",
+                                            contentScale = ContentScale.Crop,
+                                            modifier = Modifier.fillMaxSize()
+                                        )
+                                    } else {
+                                        Text(
+                                            text = (targetUser.first_name ?: "").take(2).uppercase(),
+                                            style = MaterialTheme.typography.headlineLarge,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                                Spacer(modifier = Modifier.height(16.dp))
+                                Text(
+                                    text = expandedTargetProfile!!.first_name ?: "",
+                                    style = MaterialTheme.typography.titleLarge,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = expandedTargetProfile!!.email,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        },
+                        confirmButton = {
+                            TextButton(onClick = { expandedTargetProfile = null }) {
+                                Text("Close")
+                            }
+                        }
+                    )
+                }
+
                 val targetUsers = remember(employees, currentUser, messages) {
                     val contactedUserIds = messages
                         .filter { it.sender_uuid == currentUser.uuid || it.recipient_uuid == currentUser.uuid }
@@ -3081,12 +3138,25 @@ fun TalkToScreen(viewModel: OnSiteViewModel, currentUser: Employee, isManager: B
                                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                                         modifier = Modifier.weight(1f)
                                     ) {
-                                        Surface(
-                                            modifier = Modifier.size(40.dp),
-                                            shape = CircleShape,
-                                            color = if (user.role == "Manager") MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.primaryContainer
+                                        Box(
+                                            modifier = Modifier
+                                                .size(40.dp)
+                                                .clip(CircleShape)
+                                                .background(if (user.role == "Manager") MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.primaryContainer)
+                                                .clickable { expandedTargetProfile = user },
+                                            contentAlignment = Alignment.Center
                                         ) {
-                                            Box(contentAlignment = Alignment.Center) {
+                                            val bitmap = remember(user.profile_image) {
+                                                user.profile_image?.let { decodeBase64ToBitmap(it) }
+                                            }
+                                            if (bitmap != null) {
+                                                Image(
+                                                    bitmap = bitmap,
+                                                    contentDescription = "User Profile",
+                                                    contentScale = ContentScale.Crop,
+                                                    modifier = Modifier.fillMaxSize()
+                                                )
+                                            } else {
                                                 Text(
                                                     text = (user.first_name ?: "").take(2).uppercase(),
                                                     style = MaterialTheme.typography.bodyMedium,
@@ -3322,25 +3392,7 @@ fun TalkToScreen(viewModel: OnSiteViewModel, currentUser: Employee, isManager: B
                             }
                         }
 
-                        var showChatOptions by remember { mutableStateOf(false) }
-                        Box {
-                            IconButton(onClick = { showChatOptions = true }) {
-                                Icon(Icons.Default.MoreVert, contentDescription = "Chat Options")
-                            }
-                            DropdownMenu(
-                                expanded = showChatOptions,
-                                onDismissRequest = { showChatOptions = false }
-                            ) {
-                                DropdownMenuItem(
-                                    text = { Text("Delete chats") },
-                                    onClick = {
-                                        viewModel.deleteChatWithUser(otherUser.uuid)
-                                        showChatOptions = false
-                                        activeChatUser = null
-                                    }
-                                )
-                            }
-                        }
+
                     }
                 }
             }

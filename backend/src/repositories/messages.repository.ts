@@ -59,7 +59,7 @@ export class MessagesRepository {
       .from('messages')
       .select('*')
       .or(`sender_uuid.eq.${userUuid},recipient_uuid.eq.${userUuid}`)
-      .order('timestamp', { ascending: true });
+      .order('created_at', { ascending: true });
     
     if (error) throw error;
     return data;
