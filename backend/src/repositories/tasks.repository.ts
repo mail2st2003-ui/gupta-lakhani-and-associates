@@ -1,12 +1,28 @@
 import { supabase } from '../config/supabase';
 
 export class TasksRepository {
-  async getTasks(assignedToUserUuid?: string) {
-    let query = supabase.from('tasks').select('*, task_details(*)').order('created_at', { ascending: false });
-    if (assignedToUserUuid) {
-      query = query.eq('assigned_to_user_uuid', assignedToUserUuid);
+  async getTasks(assignedTo?: string) {
+    let query = supabase
+      .from('tasks')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (assignedTo) {
+      query = query.or(`assigned_to.eq.${assignedTo},created_by.eq.${assignedTo}`);
     }
+
     const { data, error } = await query;
+    if (error) throw error;
+    return data || [];
+  }
+
+  async getTaskById(uuid: string) {
+    const { data, error } = await supabase
+      .from('tasks')
+      .select('*')
+      .eq('uuid', uuid)
+      .maybeSingle();
+
     if (error) throw error;
     return data;
   }
@@ -17,27 +33,19 @@ export class TasksRepository {
       .insert([taskData])
       .select()
       .single();
+
     if (error) throw error;
     return data;
   }
 
-  async createTaskDetails(detailsData: any) {
+  async updateTask(taskUuid: string, updateData: any) {
     const { data, error } = await supabase
-      .from('task_details')
-      .insert([detailsData])
-      .select()
-      .single();
-    if (error) throw error;
-    return data;
-  }
-
-  async updateTaskDetails(taskUuid: string, updateData: any) {
-    const { data, error } = await supabase
-      .from('task_details')
+      .from('tasks')
       .update(updateData)
-      .eq('task_uuid', taskUuid)
+      .eq('uuid', taskUuid)
       .select()
       .single();
+
     if (error) throw error;
     return data;
   }
@@ -47,6 +55,8 @@ export class TasksRepository {
       .from('tasks')
       .delete()
       .eq('uuid', taskUuid);
+
     if (error) throw error;
+    return { message: 'Task deleted successfully' };
   }
 }

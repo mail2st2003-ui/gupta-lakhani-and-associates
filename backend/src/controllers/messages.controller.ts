@@ -2,6 +2,16 @@ import { Request, Response } from 'express';
 import { MessagesService } from '../services/messages.service';
 import { randomUUID } from 'crypto';
 
+const formatMessageResponse = (msg: any) => {
+  if (!msg) return msg;
+  const createdTime = msg.created_at ? new Date(msg.created_at).getTime() : Date.now();
+  return {
+    ...msg,
+    timestamp: typeof msg.timestamp === 'number' ? msg.timestamp : createdTime,
+    created_at: msg.created_at || new Date(createdTime).toISOString()
+  };
+};
+
 export class MessagesController {
   private messagesService = new MessagesService();
 
@@ -20,7 +30,7 @@ export class MessagesController {
       };
       
       const data = await this.messagesService.saveMessage(dbData);
-      res.status(201).json(data);
+      res.status(201).json(formatMessageResponse(data));
     } catch (error: any) {
       res.status(400).json({ error: error.message });
     }
@@ -30,7 +40,8 @@ export class MessagesController {
     try {
       const { userUuid, otherUuid } = req.params;
       const data = await this.messagesService.getMessagesBetween(userUuid as string, otherUuid as string);
-      res.status(200).json(data);
+      const formatted = Array.isArray(data) ? data.map(formatMessageResponse) : data;
+      res.status(200).json(formatted);
     } catch (error: any) {
       res.status(400).json({ error: error.message });
     }
@@ -50,7 +61,8 @@ export class MessagesController {
     try {
       const { userUuid } = req.params;
       const data = await this.messagesService.getAllUserMessages(userUuid as string);
-      res.status(200).json(data);
+      const formatted = Array.isArray(data) ? data.map(formatMessageResponse) : data;
+      res.status(200).json(formatted);
     } catch (error: any) {
       res.status(400).json({ error: error.message });
     }

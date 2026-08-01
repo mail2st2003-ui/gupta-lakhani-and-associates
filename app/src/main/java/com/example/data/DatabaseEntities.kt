@@ -80,7 +80,8 @@ data class Message(
     val attachmentType: String? = null,
     val attachmentData: String? = null,
     val attachmentName: String? = null,
-    val voiceDuration: Int = 0
+    val voiceDuration: Int = 0,
+    @Json(name = "created_at") val created_at: String? = null
 )
 
 @Entity(tableName = "summons")
@@ -125,23 +126,17 @@ data class LeaveRequest(
 @Entity(tableName = "tasks")
 data class Task(
     @PrimaryKey val uuid: String = java.util.UUID.randomUUID().toString(),
-    val created_by_user_uuid: String,
-    val assigned_to_user_uuid: String,
-    val created_at: Long = System.currentTimeMillis(),
-    val updated_at: Long = System.currentTimeMillis(),
+    val title: String = "",
+    val description: String = "",
+    val created_by: String = "",
+    val assigned_to: String = "",
+    val assigned_by: String = "",
+    val created_at: String = "",
+    val assigned_at: String = "",
+    val status: String = "Pending",
+    val priority: String = "Medium",
+    val is_completed: Boolean = false,
     val isSynced: Boolean = false
 )
 
-@Entity(tableName = "task_details")
-data class TaskDetails(
-    @PrimaryKey val uuid: String = java.util.UUID.randomUUID().toString(),
-    val task_uuid: String,
-    val title: String,
-    val description: String,
-    val status: String = "Pending",
-    val priority: String = "Medium",
-    val due_date: Long,
-    val created_at: Long = System.currentTimeMillis(),
-    val updated_at: Long = System.currentTimeMillis(),
-    val isSynced: Boolean = false
-)
+

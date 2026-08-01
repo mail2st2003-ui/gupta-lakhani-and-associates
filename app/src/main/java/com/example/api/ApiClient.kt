@@ -168,6 +168,18 @@ interface TasksApiService {
         @Query("employee_id") employeeId: String
     ): List<com.example.data.TodoItem>
 
+    @GET("api/tasks")
+    suspend fun getAllAdminTasks(): List<com.example.data.Task>
+
+    @POST("api/tasks")
+    suspend fun createAdminTask(@Body task: com.example.data.Task): Any
+
+    @PUT("api/tasks/{id}")
+    suspend fun updateAdminTask(@Path("id") id: String, @Body task: com.example.data.Task): Any
+
+    @DELETE("api/tasks/{id}")
+    suspend fun deleteAdminTask(@Path("id") id: String): Any
+
     @POST("api/tasks")
     suspend fun createTask(@Body task: com.example.data.TodoItem): Any
 }

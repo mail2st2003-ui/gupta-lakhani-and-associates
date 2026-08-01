@@ -2,99 +2,84 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.TasksService = void 0;
 const crypto_1 = require("crypto");
-const supabase_1 = require("../config/supabase");
+const tasks_repository_1 = require("../repositories/tasks.repository");
+// Exact schema columns of public.tasks table in Supabase
+const TASK_DB_COLUMNS = [
+    'uuid',
+    'title',
+    'description',
+    'created_by',
+    'assigned_to',
+    'assigned_by',
+    'created_at',
+    'assigned_at',
+    'status',
+    'priority'
+];
 class TasksService {
-    async getTasks(employeeId) {
-        const results = [];
-        let query = supabase_1.supabase
-            .from('tasks')
-            .select('*, task_details(*)')
-            .order('created_at', { ascending: false });
-        if (employeeId) {
-            query = query.eq('assigned_to_user_uuid', employeeId);
+    repository = new tasks_repository_1.TasksRepository();
+    /**
+     * Filters incoming payload to only allow valid public.tasks table columns,
+     * preventing PostgreSQL errors on extra client fields (e.g. isSynced, is_completed).
+     */
+    filterTaskColumns(data) {
+        if (!data || typeof data !== 'object')
+            return {};
+        const sanitized = {};
+        for (const col of TASK_DB_COLUMNS) {
+            if (data[col] !== undefined) {
+                sanitized[col] = data[col];
+            }
         }
-        const { data: assignedTasks, error } = await query;
-        if (error)
-            throw error;
-        results.push(...(assignedTasks || []).map((task) => {
-            const details = Array.isArray(task.task_details) ? task.task_details[0] : task.task_details;
-            return {
-                uuid: task.uuid,
-                user_uuid: task.assigned_to_user_uuid,
-                title: details?.title || '',
-                description: details?.description || '',
-                priority: details?.priority || 'Medium',
-                is_completed: details?.status === 'Complete',
-                status: details?.status || 'Pending',
-                timestamp: details?.created_at ? new Date(details.created_at).getTime() : Date.now(),
-                is_personal: false,
-                assigned_by: task.created_by_user_uuid || '',
-                isSynced: true
-            };
-        }));
-        return results.sort((a, b) => b.timestamp - a.timestamp);
+        return sanitized;
+    }
+    formatTaskRecord(task) {
+        if (!task)
+            return null;
+        return {
+            uuid: task.uuid || (0, crypto_1.randomUUID)(),
+            title: task.title || '',
+            description: task.description || '',
+            created_by: task.created_by || '',
+            assigned_to: task.assigned_to || '',
+            assigned_by: task.assigned_by || task.created_by || '',
+            created_at: task.created_at || new Date().toISOString(),
+            assigned_at: task.assigned_at || task.created_at || new Date().toISOString(),
+            status: task.status || 'Pending',
+            priority: task.priority || 'Medium'
+        };
+    }
+    async getTasks(assignedTo) {
+        const rawTasks = await this.repository.getTasks(assignedTo);
+        return (rawTasks || []).map((t) => this.formatTaskRecord(t)).filter(Boolean);
+    }
+    async getTaskById(taskId) {
+        const rawTask = await this.repository.getTaskById(taskId);
+        if (!rawTask)
+            return null;
+        return this.formatTaskRecord(rawTask);
     }
     async createTask(taskData) {
-        const taskUuid = taskData.uuid || taskData.id || (0, crypto_1.randomUUID)();
-        const taskRecord = {
-            uuid: taskUuid,
-            created_by_user_uuid: taskData.assigned_by || taskData.assignedBy || null,
-            assigned_to_user_uuid: taskData.user_uuid || taskData.employeeId
+        const now = new Date().toISOString();
+        const prepared = {
+            uuid: taskData.uuid || (0, crypto_1.randomUUID)(),
+            created_at: now,
+            assigned_at: now,
+            status: 'Pending',
+            priority: 'Medium',
+            ...taskData
         };
-        const { data: createdTask, error: taskError } = await supabase_1.supabase
-            .from('tasks')
-            .insert([taskRecord])
-            .select()
-            .single();
-        if (taskError)
-            throw taskError;
-        const detailsRecord = {
-            uuid: taskData.details_uuid || (0, crypto_1.randomUUID)(),
-            task_uuid: taskUuid,
-            title: taskData.title,
-            description: taskData.description || '',
-            status: taskData.status || 'Pending',
-            priority: taskData.priority || 'Medium',
-            dues_date: taskData.due_date || taskData.timestamp || Date.now(),
-            remarks: taskData.remarks || ''
-        };
-        const { data: details, error: detailsError } = await supabase_1.supabase
-            .from('task_details')
-            .insert([detailsRecord])
-            .select()
-            .single();
-        if (detailsError)
-            throw detailsError;
-        return { ...createdTask, task_details: details };
+        const taskRecord = this.filterTaskColumns(prepared);
+        const created = await this.repository.createTask(taskRecord);
+        return this.formatTaskRecord(created);
     }
     async updateTask(taskId, updateData) {
-        const dbData = {};
-        if (updateData.status !== undefined)
-            dbData.status = updateData.status;
-        if (updateData.priority !== undefined)
-            dbData.priority = updateData.priority;
-        if (updateData.title !== undefined)
-            dbData.title = updateData.title;
-        if (updateData.description !== undefined)
-            dbData.description = updateData.description;
-        const { data, error } = await supabase_1.supabase
-            .from('task_details')
-            .update(dbData)
-            .eq('task_uuid', taskId)
-            .select()
-            .single();
-        if (error)
-            throw error;
-        return data;
+        const taskUpdateData = this.filterTaskColumns(updateData);
+        const updated = await this.repository.updateTask(taskId, taskUpdateData);
+        return this.formatTaskRecord(updated);
     }
     async deleteTask(taskId) {
-        const { error } = await supabase_1.supabase
-            .from('tasks')
-            .delete()
-            .eq('uuid', taskId);
-        if (error)
-            throw error;
-        return { message: 'Task deleted successfully' };
+        return this.repository.deleteTask(taskId);
     }
 }
 exports.TasksService = TasksService;

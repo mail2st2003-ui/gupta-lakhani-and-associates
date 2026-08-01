@@ -16,14 +16,27 @@ interface AppDao {
     @Query("SELECT * FROM tasks")
     fun getAllTasksFlow(): Flow<List<Task>>
 
+    @Query("SELECT * FROM tasks")
+    suspend fun getAllTasksDirect(): List<Task>
+
+    @Query("SELECT * FROM tasks WHERE uuid = :uuid")
+    suspend fun getTaskById(uuid: String): Task?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertTask(task: Task)
 
-    @Query("SELECT * FROM task_details")
-    fun getAllTaskDetailsFlow(): Flow<List<TaskDetails>>
-
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertTaskDetails(details: TaskDetails)
+    suspend fun insertTasks(tasks: List<Task>)
+
+    @Update
+    suspend fun updateTask(task: Task)
+
+    @Query("DELETE FROM tasks WHERE uuid = :uuid")
+    suspend fun deleteTaskById(uuid: String)
+
+    @Query("SELECT * FROM tasks WHERE assigned_to = :userUuid OR created_by = :userUuid")
+    fun getTasksByAssigneeFlow(userUuid: String): Flow<List<Task>>
+
 
     @Query("SELECT * FROM employees")
     fun getAllEmployeesFlow(): Flow<List<Employee>>
@@ -150,8 +163,8 @@ interface AppDao {
 }
 
 @Database(
-    entities = [Employee::class, UserDetails::class, AttendanceLog::class, TodoItem::class, Message::class, SummonAlert::class, SystemAlert::class, LeaveRequest::class, Task::class, TaskDetails::class],
-    version = 14,
+    entities = [Employee::class, UserDetails::class, AttendanceLog::class, TodoItem::class, Message::class, SummonAlert::class, SystemAlert::class, LeaveRequest::class, Task::class],
+    version = 17,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -179,7 +192,6 @@ abstract class AppDatabase : RoomDatabase() {
 
 class OnSiteRepository(private val dao: AppDao) {
     val allTasks = dao.getAllTasksFlow()
-    val allTaskDetails = dao.getAllTaskDetailsFlow()
     val allEmployees: Flow<List<Employee>> = dao.getAllEmployeesFlow()
     val allAttendanceLogs: Flow<List<AttendanceLog>> = dao.getAllAttendanceLogsFlow()
     val allTodoItems: Flow<List<TodoItem>> = dao.getAllTodoItemsFlow()
@@ -188,7 +200,13 @@ class OnSiteRepository(private val dao: AppDao) {
     val allLeaveRequests: Flow<List<LeaveRequest>> = dao.getAllLeaveRequestsFlow()
 
     suspend fun insertTask(task: Task) = dao.insertTask(task)
-    suspend fun insertTaskDetails(details: TaskDetails) = dao.insertTaskDetails(details)
+    suspend fun insertTasks(tasks: List<Task>) = dao.insertTasks(tasks)
+    suspend fun updateTask(task: Task) = dao.updateTask(task)
+    suspend fun deleteTask(uuid: String) = dao.deleteTaskById(uuid)
+    suspend fun getAllTasksDirect(): List<Task> = dao.getAllTasksDirect()
+    suspend fun getTaskById(uuid: String): Task? = dao.getTaskById(uuid)
+    fun getTasksByAssignee(userUuid: String) = dao.getTasksByAssigneeFlow(userUuid)
+
     suspend fun getAllEmployeesDirect(): List<Employee> = dao.getAllEmployeesDirect()
     suspend fun getEmployeeById(uuid: String): Employee? = dao.getEmployeeById(uuid)
     suspend fun getAllAttendanceLogsDirect(): List<AttendanceLog> = dao.getAllAttendanceLogsDirect()

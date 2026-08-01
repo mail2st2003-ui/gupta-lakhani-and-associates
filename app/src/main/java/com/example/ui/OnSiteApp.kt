@@ -1815,8 +1815,49 @@ fun EmployeeOnSiteScreen(
     val context = LocalContext.current
     val prefs = remember(employee.uuid) { context.getSharedPreferences("onsite_prefs", android.content.Context.MODE_PRIVATE) }
     
+    val locationManager = remember(context) { context.getSystemService(android.content.Context.LOCATION_SERVICE) as? android.location.LocationManager }
+    var isGpsActive by remember {
+        mutableStateOf(
+            try {
+                if (locationManager == null) false
+                else if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+                    locationManager.isLocationEnabled
+                } else {
+                    locationManager.isProviderEnabled(android.location.LocationManager.GPS_PROVIDER) ||
+                    locationManager.isProviderEnabled(android.location.LocationManager.NETWORK_PROVIDER)
+                }
+            } catch (e: Exception) {
+                false
+            }
+        )
+    }
+
     var realLocation by remember { mutableStateOf<android.location.Location?>(null) }
+    var isFetchingLocation by remember { mutableStateOf(true) }
     var locationPermissionGranted by remember { mutableStateOf(false) }
+
+    // Periodically verify if GPS hardware is turned ON or OFF
+    LaunchedEffect(Unit) {
+        while (true) {
+            val active = try {
+                if (locationManager == null) false
+                else if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+                    locationManager.isLocationEnabled
+                } else {
+                    locationManager.isProviderEnabled(android.location.LocationManager.GPS_PROVIDER) ||
+                    locationManager.isProviderEnabled(android.location.LocationManager.NETWORK_PROVIDER)
+                }
+            } catch (e: Exception) {
+                false
+            }
+            isGpsActive = active
+            if (!active) {
+                realLocation = null
+                isFetchingLocation = false
+            }
+            kotlinx.coroutines.delay(1500)
+        }
+    }
 
     // Check if permission is already granted
     val fineGranted = remember(context) {
@@ -1865,24 +1906,29 @@ fun EmployeeOnSiteScreen(
         com.google.android.gms.location.LocationServices.getFusedLocationProviderClient(context)
     }
 
-    LaunchedEffect(locationPermissionGranted) {
-        if (locationPermissionGranted) {
+    // Refresh and fetch live GPS location on entry and whenever GPS is toggled
+    LaunchedEffect(locationPermissionGranted, isGpsActive) {
+        if (locationPermissionGranted && isGpsActive) {
+            isFetchingLocation = true
             try {
-                fusedLocationClient.lastLocation.addOnSuccessListener { loc ->
+                val priority = com.google.android.gms.location.Priority.PRIORITY_HIGH_ACCURACY
+                fusedLocationClient.getCurrentLocation(priority, null).addOnSuccessListener { loc ->
                     if (loc != null) {
                         realLocation = loc
+                        isFetchingLocation = false
                     }
                 }
 
                 val locationRequest = com.google.android.gms.location.LocationRequest.Builder(
-                    com.google.android.gms.location.Priority.PRIORITY_HIGH_ACCURACY,
-                    5000L
-                ).build()
+                    priority,
+                    3000L
+                ).setMinUpdateIntervalMillis(2000L).build()
 
                 val locationCallback = object : com.google.android.gms.location.LocationCallback() {
                     override fun onLocationResult(p0: com.google.android.gms.location.LocationResult) {
                         p0.lastLocation?.let {
                             realLocation = it
+                            isFetchingLocation = false
                         }
                     }
                 }
@@ -1893,8 +1939,11 @@ fun EmployeeOnSiteScreen(
                     android.os.Looper.getMainLooper()
                 )
             } catch (e: SecurityException) {
-                // Ignore security exceptions gracefully
+                isFetchingLocation = false
             }
+        } else {
+            realLocation = null
+            isFetchingLocation = false
         }
     }
 
@@ -2103,6 +2152,11 @@ fun EmployeeOnSiteScreen(
         set(java.util.Calendar.SECOND, 0)
         set(java.util.Calendar.MILLISECOND, 0)
     }.timeInMillis
+    val todayEndMillis = todayStartMillis + 24 * 60 * 60 * 1000 - 1
+
+    val hasCheckedInToday = checkInLogs.any { log ->
+        log.type == "Check-In" && log.timestamp in todayStartMillis..todayEndMillis
+    }
 
     val groupedShifts = groupLogsToShifts(checkInLogs)
     val filteredGroupedShifts = groupedShifts.filter { shift ->
@@ -2113,11 +2167,12 @@ fun EmployeeOnSiteScreen(
         }
     }
 
-    val activeLat = realLocation?.latitude ?: simulatedLocation.latitude
-    val activeLng = realLocation?.longitude ?: simulatedLocation.longitude
-
-    val distance = viewModel.calculateDistanceFromGeofence(activeLat, activeLng)
-    val isWithinRange = distance <= geofenceRadius
+    val distance: Double? = if (isGpsActive && realLocation != null) {
+        viewModel.calculateDistanceFromGeofence(realLocation!!.latitude, realLocation!!.longitude)
+    } else {
+        null
+    }
+    val isWithinRange = isGpsActive && (distance != null) && (distance <= geofenceRadius)
 
     Column(
         modifier = Modifier
@@ -2156,7 +2211,28 @@ fun EmployeeOnSiteScreen(
                         modifier = Modifier.padding(bottom = 8.dp)
                     )
 
-                    // Simulated radar circle with radial effect
+                    val radarColor = when {
+                        !isGpsActive -> Color(0xFFFF5722)
+                        isFetchingLocation && realLocation == null -> MaterialTheme.colorScheme.primary
+                        isWithinRange -> Color(0xFF4CAF50)
+                        else -> Color(0xFFFF5722)
+                    }
+
+                    val radarIcon = when {
+                        !isGpsActive -> Icons.Default.LocationOff
+                        isFetchingLocation && realLocation == null -> Icons.Default.MyLocation
+                        isWithinRange -> Icons.Default.GpsFixed
+                        else -> Icons.Default.GpsOff
+                    }
+
+                    val radarStatusText = when {
+                        !isGpsActive -> "GPS TURNED OFF"
+                        isFetchingLocation && realLocation == null -> "ACQUIRING GPS..."
+                        isWithinRange -> "ON-SITE"
+                        else -> "OUT-OF-BOUNDS"
+                    }
+
+                    // Radar circle with radial effect
                     Box(
                         modifier = Modifier
                             .size(100.dp)
@@ -2166,28 +2242,28 @@ fun EmployeeOnSiteScreen(
                                     colors = if (isWithinRange)
                                         listOf(Color(0xFF81C784).copy(alpha = 0.3f), Color(0xFF4CAF50).copy(alpha = 0.05f))
                                     else
-                                        listOf(Color(0xFFE57373).copy(alpha = 0.3f), Color(0xFFF44336).copy(alpha = 0.05f))
+                                        listOf(radarColor.copy(alpha = 0.3f), radarColor.copy(alpha = 0.05f))
                                 )
                             )
                             .border(
                                 width = 2.dp,
-                                color = if (isWithinRange) Color(0xFF4CAF50) else Color(0xFFFF5722),
+                                color = radarColor,
                                 shape = CircleShape
                             ),
                         contentAlignment = Alignment.Center
                     ) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Icon(
-                                imageVector = if (isWithinRange) Icons.Default.GpsFixed else Icons.Default.GpsOff,
+                                imageVector = radarIcon,
                                 contentDescription = "Radar Symbol",
-                                tint = if (isWithinRange) Color(0xFF4CAF50) else Color(0xFFFF5722),
+                                tint = radarColor,
                                 modifier = Modifier.size(30.dp)
                             )
                             Text(
-                                text = if (isWithinRange) "ON-SITE" else "OUT-OF-BOUNDS",
+                                text = radarStatusText,
                                 style = MaterialTheme.typography.labelSmall,
                                 fontWeight = FontWeight.Bold,
-                                color = if (isWithinRange) Color(0xFF4CAF50) else Color(0xFFFF5722),
+                                color = radarColor,
                                 modifier = Modifier.padding(top = 2.dp)
                             )
                         }
@@ -2205,14 +2281,22 @@ fun EmployeeOnSiteScreen(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+
+                    val sourceText = when {
+                        !isGpsActive -> "❌ GPS Service: Turned Off (Enable GPS)"
+                        isFetchingLocation && realLocation == null -> "📡 GPS Service: Acquiring signal..."
+                        realLocation != null -> "📡 Source: Live Device GPS Location"
+                        else -> "⚙️ Source: GPS Loading..."
+                    }
                     Text(
-                        text = if (realLocation != null) "📡 Source: Live Device GPS Location" else "⚙️ Source: Simulated Location (GPS Loading/Permission Required)",
+                        text = sourceText,
                         style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.Bold,
-                        color = if (realLocation != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondary,
+                        color = if (isWithinRange) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
                         modifier = Modifier.padding(top = 4.dp)
                     )
-                    if (realLocation != null) {
+
+                    if (realLocation != null && isGpsActive) {
                         Text(
                             text = "GPS Coordinates: ${String.format(Locale.US, "%.5f, %.5f", realLocation!!.latitude, realLocation!!.longitude)}",
                             style = MaterialTheme.typography.bodySmall,
@@ -2220,8 +2304,15 @@ fun EmployeeOnSiteScreen(
                             modifier = Modifier.padding(top = 2.dp)
                         )
                     }
+
+                    val distanceText = when {
+                        !isGpsActive -> "GPS is turned off"
+                        isFetchingLocation && realLocation == null -> "Locating..."
+                        distance != null -> "${String.format(Locale.US, "%.1f", distance)} meters"
+                        else -> "Unavailable"
+                    }
                     Text(
-                        text = "Your current distance: ${String.format(Locale.US, "%.1f", distance)} meters",
+                        text = "Your current distance: $distanceText",
                         style = MaterialTheme.typography.bodyLarge,
                         fontWeight = FontWeight.Bold,
                         color = if (isWithinRange) Color(0xFF4CAF50) else Color(0xFFFF5722),
@@ -2239,29 +2330,42 @@ fun EmployeeOnSiteScreen(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
+                    val canCheckIn = isWithinRange && !hasCheckedInToday && !isFetchingLocation
+
                     Button(
                         onClick = { viewModel.executeAttendanceAction("Check-In", realLocation?.latitude, realLocation?.longitude) },
-                        enabled = isWithinRange,
+                        enabled = canCheckIn,
                         modifier = Modifier
                             .weight(1f)
                             .height(44.dp)
                             .testTag("check_in_button"),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFF4CAF50),
-                            disabledContainerColor = Color(0xFFE0E0E0)
-                        )
+                        colors = if (hasCheckedInToday) {
+                            ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFF81C784),
+                                disabledContainerColor = Color(0xFFE8F5E9),
+                                disabledContentColor = Color(0xFF2E7D32)
+                            )
+                        } else {
+                            ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFF4CAF50),
+                                disabledContainerColor = Color(0xFFE0E0E0)
+                            )
+                        }
                     ) {
                         Icon(
-                            imageVector = Icons.Default.CheckCircle,
+                            imageVector = if (hasCheckedInToday) Icons.Default.Check else Icons.Default.CheckCircle,
                             contentDescription = "Check-In Sign Icon",
                             modifier = Modifier.padding(end = 4.dp)
                         )
-                        Text("Check In", fontSize = 14.sp)
+                        Text(
+                            text = if (hasCheckedInToday) "Checked In Today" else "Check In",
+                            fontSize = 14.sp
+                        )
                     }
 
                     Button(
                         onClick = { viewModel.executeAttendanceAction("Check-Out", realLocation?.latitude, realLocation?.longitude) },
-                        enabled = isWithinRange,
+                        enabled = isWithinRange && !isFetchingLocation,
                         modifier = Modifier
                             .weight(1f)
                             .height(44.dp)
@@ -2279,11 +2383,20 @@ fun EmployeeOnSiteScreen(
                         Text("Check Out", fontSize = 14.sp)
                     }
                 }
-                if (!isWithinRange) {
+
+                val statusAlertMessage = when {
+                    !isGpsActive -> "⚠️ Location Services are turned off. Please turn on GPS in device settings to verify attendance."
+                    isFetchingLocation && realLocation == null -> "📡 Fetching GPS location... Please wait."
+                    !isWithinRange -> "⚠️ Check-In/Out Disabled: You must be physically On-Site to log your shift."
+                    hasCheckedInToday -> "✓ Checked in for today. Check-out is available when your shift ends."
+                    else -> null
+                }
+
+                if (statusAlertMessage != null) {
                     Text(
-                        text = "⚠️ Check-In/Out Disabled: You must be physically On-Site to log your shift.",
+                        text = statusAlertMessage,
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error,
+                        color = if (hasCheckedInToday) Color(0xFF2E7D32) else MaterialTheme.colorScheme.error,
                         textAlign = TextAlign.Center,
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier
@@ -2530,26 +2643,675 @@ fun EmployeeOnSiteScreen(
     }
 }
 
+enum class TaskFormMode {
+    CREATE, EDIT, VIEW
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun TaskFormDialog(
+    mode: TaskFormMode,
+    task: com.example.data.Task?,
+    employees: List<Employee>,
+    onDismiss: () -> Unit,
+    onSave: (title: String, description: String, assignedToUuid: String) -> Unit
+) {
+    var title by remember { mutableStateOf(task?.title ?: "") }
+    var description by remember { mutableStateOf(task?.description ?: "") }
+    var selectedEmployeeUuid by remember {
+        mutableStateOf(
+            task?.assigned_to ?: employees.firstOrNull()?.uuid ?: ""
+        )
+    }
+    var expandedDropdown by remember { mutableStateOf(false) }
+    var titleError by remember { mutableStateOf(false) }
+
+    val isReadOnly = mode == TaskFormMode.VIEW
+    val dialogTitle = when (mode) {
+        TaskFormMode.CREATE -> "Create New Task"
+        TaskFormMode.EDIT -> "Edit Task"
+        TaskFormMode.VIEW -> "Task Details"
+    }
+
+    val selectedEmployee = employees.find { it.uuid == selectedEmployeeUuid }
+
+    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(20.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                // Title & Mode Badge
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = dialogTitle,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Surface(
+                        color = when (mode) {
+                            TaskFormMode.CREATE -> MaterialTheme.colorScheme.primaryContainer
+                            TaskFormMode.EDIT -> MaterialTheme.colorScheme.secondaryContainer
+                            TaskFormMode.VIEW -> MaterialTheme.colorScheme.surfaceVariant
+                        },
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Text(
+                            text = mode.name,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+
+                Divider()
+
+                // Title input
+                OutlinedTextField(
+                    value = title,
+                    onValueChange = {
+                        title = it
+                        if (it.isNotBlank()) titleError = false
+                    },
+                    label = { Text("Task Title") },
+                    placeholder = { Text("Enter task title...") },
+                    enabled = !isReadOnly,
+                    isError = titleError,
+                    supportingText = if (titleError) { { Text("Title cannot be empty") } } else null,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(10.dp)
+                )
+
+                // Description input
+                OutlinedTextField(
+                    value = description,
+                    onValueChange = { description = it },
+                    label = { Text("Description") },
+                    placeholder = { Text("Enter detailed description...") },
+                    enabled = !isReadOnly,
+                    minLines = 3,
+                    maxLines = 6,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(10.dp)
+                )
+
+                // Assign To Dropdown
+                Text(
+                    text = "Assign To",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Bold
+                )
+
+                if (isReadOnly) {
+                    // Read-only card showing assignee
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                        shape = RoundedCornerShape(10.dp),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.Person, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column {
+                                Text(
+                                    text = if (selectedEmployee != null) "${selectedEmployee.first_name ?: ""} ${selectedEmployee.last_name ?: ""}".trim().ifBlank { selectedEmployee.email } else selectedEmployeeUuid.ifBlank { "Unassigned" },
+                                    fontWeight = FontWeight.Bold,
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                                if (selectedEmployee != null) {
+                                    Text(
+                                        text = "${selectedEmployee.role} • ${selectedEmployee.email}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    // Exposed Dropdown Menu
+                    ExposedDropdownMenuBox(
+                        expanded = expandedDropdown,
+                        onExpandedChange = { expandedDropdown = !expandedDropdown },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        OutlinedTextField(
+                            value = if (selectedEmployee != null) {
+                                "${selectedEmployee.first_name ?: ""} ${selectedEmployee.last_name ?: ""}".trim().ifBlank { selectedEmployee.email } + " (${selectedEmployee.role})"
+                            } else if (selectedEmployeeUuid.isNotBlank()) {
+                                selectedEmployeeUuid
+                            } else {
+                                "Select User..."
+                            },
+                            onValueChange = {},
+                            readOnly = true,
+                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expandedDropdown) },
+                            modifier = Modifier
+                                .menuAnchor()
+                                .fillMaxWidth(),
+                            shape = RoundedCornerShape(10.dp)
+                        )
+
+                        ExposedDropdownMenu(
+                            expanded = expandedDropdown,
+                            onDismissRequest = { expandedDropdown = false }
+                        ) {
+                            if (employees.isEmpty()) {
+                                DropdownMenuItem(
+                                    text = { Text("No users found") },
+                                    onClick = { expandedDropdown = false }
+                                )
+                            } else {
+                                employees.forEach { emp ->
+                                    val name = "${emp.first_name ?: ""} ${emp.last_name ?: ""}".trim().ifBlank { emp.email }
+                                    DropdownMenuItem(
+                                        text = {
+                                            Column {
+                                                Text(
+                                                    text = name,
+                                                    fontWeight = FontWeight.Bold,
+                                                    style = MaterialTheme.typography.bodyMedium
+                                                )
+                                                Text(
+                                                    text = "${emp.role} • ${emp.email}",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
+                                        },
+                                        onClick = {
+                                            selectedEmployeeUuid = emp.uuid
+                                            expandedDropdown = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // If VIEW mode, display Created At / Assigned At / Status metadata
+                if (isReadOnly && task != null) {
+                    Divider(modifier = Modifier.padding(vertical = 4.dp))
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(
+                            text = "Created At: ${task.created_at.ifBlank { "-" }}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = "Assigned At: ${task.assigned_at.ifBlank { task.created_at.ifBlank { "-" } }}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = "Status: ${task.status}",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+
+                // Action Buttons
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 8.dp),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (isReadOnly) {
+                        Button(
+                            onClick = onDismiss,
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Text("Close")
+                        }
+                    } else {
+                        OutlinedButton(
+                            onClick = onDismiss,
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Text("Cancel")
+                        }
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Button(
+                            onClick = {
+                                if (title.isBlank()) {
+                                    titleError = true
+                                    return@Button
+                                }
+                                onSave(title.trim(), description.trim(), selectedEmployeeUuid)
+                            },
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Text(if (mode == TaskFormMode.CREATE) "Create Task" else "Save Changes")
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun AdminTasksTableView(
+    viewModel: OnSiteViewModel,
+    currentUser: Employee
+) {
+    val adminTasks by viewModel.allAdminTasks.collectAsStateWithLifecycle()
+    val allEmployees by viewModel.employees.collectAsStateWithLifecycle()
+
+    var showTaskFormDialog by remember { mutableStateOf(false) }
+    var taskFormMode by remember { mutableStateOf(TaskFormMode.CREATE) }
+    var selectedTask by remember { mutableStateOf<com.example.data.Task?>(null) }
+
+    var showDeleteConfirmDialog by remember { mutableStateOf(false) }
+    var taskToDelete by remember { mutableStateOf<com.example.data.Task?>(null) }
+
+    LaunchedEffect(Unit) {
+        viewModel.fetchAllAdminTasks()
+        viewModel.fetchAllUsersFromServer()
+    }
+
+    // Helper to resolve user display name
+    fun resolveUserName(userUuid: String): String {
+        if (userUuid.isBlank()) return "-"
+        val emp = allEmployees.find { it.uuid == userUuid || it.email == userUuid }
+        return when {
+            emp != null && !emp.first_name.isNullOrBlank() -> "${emp.first_name} ${emp.last_name ?: ""}".trim()
+            emp != null -> emp.email
+            else -> userUuid
+        }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+    ) {
+        // Top Header Row
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column {
+                Text(
+                    text = "All Tasks",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Text(
+                    text = "${adminTasks.size} tasks in system",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            Button(
+                onClick = {
+                    selectedTask = null
+                    taskFormMode = TaskFormMode.CREATE
+                    showTaskFormDialog = true
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                shape = RoundedCornerShape(10.dp)
+            ) {
+                Icon(Icons.Default.Add, contentDescription = "Create Task", modifier = Modifier.size(18.dp))
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("Create Task", fontWeight = FontWeight.SemiBold)
+            }
+        }
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        if (adminTasks.isEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(
+                        imageVector = Icons.Default.Assignment,
+                        contentDescription = "No tasks",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                        modifier = Modifier.size(56.dp)
+                    )
+                    Text(
+                        text = "No tasks found in the system.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedButton(
+                        onClick = {
+                            selectedTask = null
+                            taskFormMode = TaskFormMode.CREATE
+                            showTaskFormDialog = true
+                        }
+                    ) {
+                        Text("Create First Task")
+                    }
+                }
+            }
+        } else {
+            // Table Card Container with Horizontal and Vertical Scrolling
+            val horizontalScrollState = rememberScrollState()
+
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .horizontalScroll(horizontalScrollState)
+                ) {
+                    // Header Row
+                    Surface(
+                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .padding(horizontal = 12.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("Title", modifier = Modifier.width(160.dp), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                            Text("Description", modifier = Modifier.width(220.dp), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                            Text("Created By", modifier = Modifier.width(140.dp), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                            Text("Assigned To", modifier = Modifier.width(140.dp), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                            Text("Assigned By", modifier = Modifier.width(140.dp), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                            Text("Created At", modifier = Modifier.width(160.dp), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                            Text("Assigned At", modifier = Modifier.width(160.dp), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                            Text("Actions", modifier = Modifier.width(140.dp), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                        }
+                    }
+
+                    Divider(color = MaterialTheme.colorScheme.outlineVariant)
+
+                    // Rows List
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        items(adminTasks) { task ->
+                            val createdByName = resolveUserName(task.created_by)
+                            val assignedToName = resolveUserName(task.assigned_to)
+                            val assignedByName = resolveUserName(task.assigned_by.ifBlank { task.created_by })
+
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = task.title.ifBlank { "Untitled Task" },
+                                    modifier = Modifier.width(160.dp).padding(end = 8.dp),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    text = task.description.ifBlank { "-" },
+                                    modifier = Modifier.width(220.dp).padding(end = 8.dp),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    text = createdByName,
+                                    modifier = Modifier.width(140.dp).padding(end = 8.dp),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontWeight = FontWeight.Medium,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    text = assignedToName,
+                                    modifier = Modifier.width(140.dp).padding(end = 8.dp),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontWeight = FontWeight.Medium,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    text = assignedByName,
+                                    modifier = Modifier.width(140.dp).padding(end = 8.dp),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    text = task.created_at.ifBlank { "-" },
+                                    modifier = Modifier.width(160.dp).padding(end = 8.dp),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1
+                                )
+                                Text(
+                                    text = task.assigned_at.ifBlank { task.created_at.ifBlank { "-" } },
+                                    modifier = Modifier.width(160.dp).padding(end = 8.dp),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1
+                                )
+
+                                // 3 Actions: View, Edit, Delete
+                                Row(
+                                    modifier = Modifier.width(140.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    // View Button
+                                    IconButton(
+                                        onClick = {
+                                            selectedTask = task
+                                            taskFormMode = TaskFormMode.VIEW
+                                            showTaskFormDialog = true
+                                        },
+                                        modifier = Modifier
+                                            .size(32.dp)
+                                            .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f), CircleShape)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Visibility,
+                                            contentDescription = "View Task",
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+
+                                    // Edit Button
+                                    IconButton(
+                                        onClick = {
+                                            selectedTask = task
+                                            taskFormMode = TaskFormMode.EDIT
+                                            showTaskFormDialog = true
+                                        },
+                                        modifier = Modifier
+                                            .size(32.dp)
+                                            .background(MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.4f), CircleShape)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Edit,
+                                            contentDescription = "Edit Task",
+                                            tint = MaterialTheme.colorScheme.secondary,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+
+                                    // Delete Button
+                                    IconButton(
+                                        onClick = {
+                                            taskToDelete = task
+                                            showDeleteConfirmDialog = true
+                                        },
+                                        modifier = Modifier
+                                            .size(32.dp)
+                                            .background(MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.4f), CircleShape)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Delete,
+                                            contentDescription = "Delete Task",
+                                            tint = MaterialTheme.colorScheme.error,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                }
+                            }
+                            Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Delete Confirmation Modal
+    if (showDeleteConfirmDialog && taskToDelete != null) {
+        AlertDialog(
+            onDismissRequest = {
+                showDeleteConfirmDialog = false
+                taskToDelete = null
+            },
+            icon = {
+                Icon(
+                    imageVector = Icons.Default.DeleteForever,
+                    contentDescription = "Delete",
+                    tint = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.size(36.dp)
+                )
+            },
+            title = {
+                Text("Delete Task", fontWeight = FontWeight.Bold)
+            },
+            text = {
+                Text("Are you sure you want to delete the task \"${taskToDelete?.title}\"? This action cannot be undone.")
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val uuid = taskToDelete?.uuid
+                        if (!uuid.isNullOrBlank()) {
+                            viewModel.deleteAdminTask(uuid)
+                        }
+                        showDeleteConfirmDialog = false
+                        taskToDelete = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("Delete")
+                }
+            },
+            dismissButton = {
+                OutlinedButton(
+                    onClick = {
+                        showDeleteConfirmDialog = false
+                        taskToDelete = null
+                    }
+                ) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    // Task Creation / Editing / Viewing Modal Dialog
+    if (showTaskFormDialog) {
+        TaskFormDialog(
+            mode = taskFormMode,
+            task = selectedTask,
+            employees = allEmployees,
+            onDismiss = { showTaskFormDialog = false },
+            onSave = { title, description, assignedToUuid ->
+                if (taskFormMode == TaskFormMode.CREATE) {
+                    viewModel.createAdminTask(
+                        title = title,
+                        description = description,
+                        assignedToUuid = assignedToUuid,
+                        onSuccess = { showTaskFormDialog = false }
+                    )
+                } else if (taskFormMode == TaskFormMode.EDIT && selectedTask != null) {
+                    val updated = selectedTask!!.copy(
+                        title = title,
+                        description = description,
+                        assigned_to = assignedToUuid
+                    )
+                    viewModel.updateAdminTask(
+                        task = updated,
+                        onSuccess = { showTaskFormDialog = false }
+                    )
+                }
+            }
+        )
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun EmployeeTasksScreen(viewModel: OnSiteViewModel, currentUser: Employee) {
-    var selectedSubTab by remember { mutableStateOf(0) } // 0 = Assigned Tasks, 1 = My Personal To-Dos
+    val isAdmin = currentUser.role.equals("Admin", ignoreCase = true)
+    var selectedSubTab by remember { mutableStateOf(0) } // 0 = (All Task for Admin / Assigned Tasks for Employee), 1 = My Personal To-Dos
 
     LaunchedEffect(selectedSubTab) {
         if (selectedSubTab == 0) {
-            viewModel.fetchRemoteAssignedTasksForUser(currentUser.uuid)
+            if (isAdmin) {
+                viewModel.fetchAllAdminTasks()
+            } else {
+                viewModel.fetchRemoteAssignedTasksForUser(currentUser.uuid)
+            }
         } else {
             viewModel.fetchRemoteTodosForUser(currentUser.uuid)
         }
     }
     
     val tasks by viewModel.currentEmployeeTodoItems.collectAsStateWithLifecycle()
-    
     var showAddTaskDialog by remember { mutableStateOf(false) } // For personal to-do list
-    
     val assignedTasks = tasks.filter { !it.is_personal }
     val personalTasks = tasks.filter { it.is_personal }
-    
+
+    val subTabTitles = if (isAdmin) {
+        listOf("All Task", "My Daily To-Do List")
+    } else {
+        listOf("Assigned Tasks", "My Daily To-Do List")
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -2560,7 +3322,7 @@ fun EmployeeTasksScreen(viewModel: OnSiteViewModel, currentUser: Employee) {
             modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            listOf("Assigned Tasks", "My Daily To-Do List").forEachIndexed { index, title ->
+            subTabTitles.forEachIndexed { index, title ->
                 val isSelected = selectedSubTab == index
                 Button(
                     onClick = { selectedSubTab = index },
@@ -2577,6 +3339,9 @@ fun EmployeeTasksScreen(viewModel: OnSiteViewModel, currentUser: Employee) {
         }
         
         if (selectedSubTab == 0) {
+            if (isAdmin) {
+                AdminTasksTableView(viewModel = viewModel, currentUser = currentUser)
+            } else {
             // ASSIGNED AUDIT TASKS
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -2761,6 +3526,7 @@ fun EmployeeTasksScreen(viewModel: OnSiteViewModel, currentUser: Employee) {
                     }
                 }
             }
+        }
         } else {
             // MY PERSONAL TO-DO LIST FOR DAY
             Row(
@@ -2956,7 +3722,9 @@ fun TalkToScreen(viewModel: OnSiteViewModel, currentUser: Employee, isManager: B
 
     LaunchedEffect(Unit) {
         isChatsLoading = true
-        viewModel.fetchAllUsersFromServer()
+        if (employees.isEmpty()) {
+            viewModel.fetchAllUsersFromServer()
+        }
         viewModel.syncUserMessages(currentUser.uuid)
         isChatsLoading = false
     }
@@ -3455,18 +4223,33 @@ fun TalkToScreen(viewModel: OnSiteViewModel, currentUser: Employee, isManager: B
                             Icon(Icons.Default.ArrowBack, contentDescription = "Go back to contacts list")
                         }
 
+                        val otherUserProfileBitmap = remember(otherUser.profile_image) {
+                            if (!otherUser.profile_image.isNullOrBlank()) {
+                                decodeBase64ToBitmap(otherUser.profile_image)
+                            } else null
+                        }
+
                         Surface(
-                            modifier = Modifier.size(36.dp),
+                            modifier = Modifier.size(38.dp),
                             shape = CircleShape,
-                            color = MaterialTheme.colorScheme.primary
+                            color = MaterialTheme.colorScheme.primaryContainer
                         ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Text(
-                                    text = (otherUser.first_name ?: "").take(2).uppercase(),
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onPrimary
+                            if (otherUserProfileBitmap != null) {
+                                Image(
+                                    bitmap = otherUserProfileBitmap,
+                                    contentDescription = "${otherUser.first_name} profile image",
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.fillMaxSize()
                                 )
+                            } else {
+                                Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                                    Text(
+                                        text = (otherUser.first_name ?: "").take(2).uppercase(),
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                                    )
+                                }
                             }
                         }
 
@@ -5814,13 +6597,29 @@ fun ManagerTasksDashboard(viewModel: OnSiteViewModel, currentUser: Employee) {
 
 // Helper time formatting tool
 fun formatTime(timestamp: Long): String {
-    val sdf = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
-    return sdf.format(Date(timestamp))
+    if (timestamp <= 0L) return ""
+    return try {
+        val msgCal = java.util.Calendar.getInstance().apply { timeInMillis = timestamp }
+        val nowCal = java.util.Calendar.getInstance()
+        if (msgCal.get(java.util.Calendar.YEAR) == nowCal.get(java.util.Calendar.YEAR) &&
+            msgCal.get(java.util.Calendar.DAY_OF_YEAR) == nowCal.get(java.util.Calendar.DAY_OF_YEAR)
+        ) {
+            val sdf = SimpleDateFormat("hh:mm a", Locale.getDefault())
+            sdf.format(Date(timestamp))
+        } else {
+            val sdf = SimpleDateFormat("dd MMM, hh:mm a", Locale.getDefault())
+            sdf.format(Date(timestamp))
+        }
+    } catch (e: Exception) {
+        val sdf = SimpleDateFormat("hh:mm a", Locale.getDefault())
+        sdf.format(Date(timestamp))
+    }
 }
 
 // Helper date & time formatting tool for historical records
 fun formatDateTime(timestamp: Long): String {
-    val sdf = SimpleDateFormat("dd MMM, hh:mm a", Locale.getDefault())
+    if (timestamp <= 0L) return ""
+    val sdf = SimpleDateFormat("dd MMM yyyy, hh:mm a", Locale.getDefault())
     return sdf.format(Date(timestamp))
 }
 

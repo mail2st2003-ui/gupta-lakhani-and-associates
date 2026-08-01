@@ -11,6 +11,7 @@ import com.example.data.Message
 import com.example.data.OnSiteRepository
 import com.example.data.SystemAlert
 import com.example.data.TodoItem
+import com.example.data.Task
 import com.example.data.LeaveRequest
 import com.example.data.SummonAlert
 import com.example.data.UserDetails
@@ -49,6 +50,9 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
     private val _isManager = MutableStateFlow(false)
     val isManager: StateFlow<Boolean> = _isManager.asStateFlow()
 
+    private val _isAdmin = MutableStateFlow(false)
+    val isAdmin: StateFlow<Boolean> = _isAdmin.asStateFlow()
+
     // Database Flows
     val employees: StateFlow<List<Employee>>
     val allAttendanceLogs: StateFlow<List<AttendanceLog>>
@@ -56,6 +60,7 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
     val systemAlerts: StateFlow<List<SystemAlert>>
     val allTodoItems: StateFlow<List<TodoItem>>
     val allLeaveRequests: StateFlow<List<LeaveRequest>>
+    val allAdminTasks: StateFlow<List<Task>>
     val activeSummons: StateFlow<List<SummonAlert>>
     
     // Employee-specific Flow
@@ -198,6 +203,12 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
             initialValue = emptyList()
         )
 
+        allAdminTasks = repository.allTasks.stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptyList()
+        )
+
         activeSummons = _currentUser.flatMapLatest { user ->
             if (user != null) {
                 repository.getActiveSummonsForStaff(user.uuid)
@@ -281,6 +292,7 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
                 if (employee != null) {
                     _currentUser.value = employee
                     _isManager.value = (employee.role == "Manager")
+                    _isAdmin.value = employee.role.equals("Admin", ignoreCase = true)
                     // Removed bulk fetching on session restore
                 } else {
                     themePrefs.edit().remove("logged_in_user_id").remove("logged_in_user_details").apply()
@@ -320,6 +332,60 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
                 content = "FirmSync enabled. CAs and Article Assistants, please log your on-site attendance upon arrival at the central chambers.",
                 priority = "Info",
                 timestamp = System.currentTimeMillis() - 86400000
+            )
+        )
+
+        // Seed Admin user
+        val adminUser = Employee(
+            uuid = "ADMIN-01",
+            email = "admin@guptalakhani.com",
+            role = "Admin",
+            first_name = "System",
+            last_name = "Admin",
+            designation = "Administrator",
+            password = "1234"
+        )
+        repository.insertEmployees(listOf(adminUser))
+        repository.saveUserDetails(
+            UserDetails(
+                uuid = "UD-ADMIN-01",
+                user_uuid = "ADMIN-01",
+                first_name = "System",
+                last_name = "Admin",
+                official_email = "admin@guptalakhani.com",
+                designation = "Administrator"
+            )
+        )
+
+        // Seed initial admin tasks
+        repository.insertTask(
+            Task(
+                uuid = "TASK-001",
+                title = "GST Filing Q1",
+                description = "Review and file the Q1 GST returns for client portfolio A.",
+                created_by = "ADMIN-01",
+                assigned_to = "EMP-RS-54",
+                assigned_by = "ADMIN-01",
+                created_at = "01 Aug 2026, 10:00 AM",
+                assigned_at = "01 Aug 2026, 10:30 AM",
+                status = "In Progress",
+                priority = "High",
+                isSynced = true
+            )
+        )
+        repository.insertTask(
+            Task(
+                uuid = "TASK-002",
+                title = "Audit Voucher Verification",
+                description = "Verify physical audit vouchers and bank reconciliations.",
+                created_by = "ADMIN-01",
+                assigned_to = "EMP-PP-88",
+                assigned_by = "ADMIN-01",
+                created_at = "02 Aug 2026, 09:15 AM",
+                assigned_at = "02 Aug 2026, 09:30 AM",
+                status = "Pending",
+                priority = "Medium",
+                isSynced = true
             )
         )
 
@@ -538,6 +604,7 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
     fun selectUserSession(employee: Employee) {
         _currentUser.value = employee
         _isManager.value = (employee.role == "Manager")
+        _isAdmin.value = employee.role.equals("Admin", ignoreCase = true)
         try {
             val moshi = com.squareup.moshi.Moshi.Builder().add(com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory()).build()
             val json = moshi.adapter(Employee::class.java).toJson(employee)
@@ -553,6 +620,7 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
     fun logoutSession() {
         _currentUser.value = null
         _isManager.value = false
+        _isAdmin.value = false
         themePrefs.edit().remove("logged_in_user_id").remove("logged_in_user_details").apply()
     }
 
@@ -903,37 +971,45 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
     // Attendance Handlers
     fun executeAttendanceAction(type: String, realLat: Double? = null, realLng: Double? = null) {
         val user = _currentUser.value ?: return
-        val activeLat = realLat ?: _currentSimulatedLocation.value.latitude
-        val activeLng = realLng ?: _currentSimulatedLocation.value.longitude
-        val distance = calculateDistanceFromGeofence(activeLat, activeLng)
+        if (realLat == null || realLng == null) {
+            Log.w("OnSiteViewModel", "Attendance rejected: Real GPS location required.")
+            return
+        }
+        val distance = calculateDistanceFromGeofence(realLat, realLng)
         val isWithinRange = distance <= _geofenceRadius.value
-
-        val status = if (isWithinRange) "On-Site" else "Out-of-Bounds"
+        if (!isWithinRange) {
+            Log.w("OnSiteViewModel", "Attendance rejected: User is outside geofence ($distance m).")
+            return
+        }
 
         viewModelScope.launch {
+            if (type == "Check-In") {
+                val todayStart = java.util.Calendar.getInstance().apply {
+                    set(java.util.Calendar.HOUR_OF_DAY, 0)
+                    set(java.util.Calendar.MINUTE, 0)
+                    set(java.util.Calendar.SECOND, 0)
+                    set(java.util.Calendar.MILLISECOND, 0)
+                }.timeInMillis
+                val todayEnd = todayStart + 24 * 60 * 60 * 1000 - 1
+                val existingLogs = repository.getAllAttendanceLogsDirect().filter { it.user_uuid == user.uuid }
+                val alreadyCheckedInToday = existingLogs.any { it.type == "Check-In" && it.timestamp in todayStart..todayEnd }
+                if (alreadyCheckedInToday) {
+                    Log.w("OnSiteViewModel", "Check-in ignored: User already checked in today.")
+                    return@launch
+                }
+            }
+
             val log = AttendanceLog(
                 user_uuid = user.uuid,
                 timestamp = System.currentTimeMillis(),
                 type = type,
-                status = status,
-                latitude = activeLat,
-                longitude = activeLng,
+                status = "On-Site",
+                latitude = realLat,
+                longitude = realLng,
                 isSynced = !_isOfflineMode.value
             )
 
             repository.insertAttendanceLog(log)
-
-            // Update employee's main status block
-            val newStatus = if (type == "Check-In") {
-                if (isWithinRange) "Present" else "Absent"
-            } else {
-                "Absent"
-            }
-
-            val updatedEmployee = user.copy(
-            )
-            repository.updateEmployee(updatedEmployee)
-            _currentUser.value = updatedEmployee
 
             // If offline, flag sync needed
             if (_isOfflineMode.value) {
@@ -1121,6 +1197,115 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
                 }
             } else {
                 _syncStatus.value = "Pending Sync (Offline Mode)"
+            }
+        }
+    }
+
+    fun fetchAllAdminTasks(onSuccess: () -> Unit = {}, onError: (String) -> Unit = {}) {
+        viewModelScope.launch {
+            if (_isOfflineMode.value) {
+                onSuccess()
+                return@launch
+            }
+            try {
+                val remoteTasks = com.example.api.ApiClient.tasksService.getAllAdminTasks()
+                if (remoteTasks.isNotEmpty()) {
+                    val local = repository.getAllTasksDirect()
+                    val remoteUuids = remoteTasks.map { it.uuid }.toSet()
+                    local.forEach { localTask ->
+                        if (localTask.uuid !in remoteUuids && localTask.isSynced) {
+                            repository.deleteTask(localTask.uuid)
+                        }
+                    }
+                    val safeTasks = remoteTasks.map { it.copy(isSynced = true) }
+                    repository.insertTasks(safeTasks)
+                }
+                onSuccess()
+            } catch (e: Exception) {
+                Log.e("OnSiteViewModel", "Failed to fetch all tasks", e)
+                onError(e.message ?: "Failed to fetch tasks")
+            }
+        }
+    }
+
+    fun createAdminTask(
+        title: String,
+        description: String,
+        assignedToUuid: String,
+        onSuccess: () -> Unit = {},
+        onError: (String) -> Unit = {}
+    ) {
+        val currentUser = _currentUser.value
+        val createdByUuid = currentUser?.uuid ?: "ADMIN-01"
+        val now = java.text.SimpleDateFormat("dd MMM yyyy, hh:mm a", java.util.Locale.getDefault()).format(java.util.Date())
+        val taskUuid = java.util.UUID.randomUUID().toString()
+
+        val newTask = Task(
+            uuid = taskUuid,
+            title = title,
+            description = description,
+            created_by = createdByUuid,
+            assigned_to = assignedToUuid,
+            assigned_by = createdByUuid,
+            created_at = now,
+            assigned_at = now,
+            status = "Pending",
+            priority = "Medium",
+            is_completed = false,
+            isSynced = !_isOfflineMode.value
+        )
+
+        viewModelScope.launch {
+            try {
+                repository.insertTask(newTask)
+                if (!_isOfflineMode.value) {
+                    com.example.api.ApiClient.tasksService.createAdminTask(newTask)
+                }
+                fetchAllAdminTasks()
+                onSuccess()
+            } catch (e: Exception) {
+                Log.e("OnSiteViewModel", "Failed to create task", e)
+                onSuccess()
+            }
+        }
+    }
+
+    fun updateAdminTask(
+        task: Task,
+        onSuccess: () -> Unit = {},
+        onError: (String) -> Unit = {}
+    ) {
+        viewModelScope.launch {
+            try {
+                repository.updateTask(task.copy(isSynced = !_isOfflineMode.value))
+                if (!_isOfflineMode.value) {
+                    com.example.api.ApiClient.tasksService.updateAdminTask(task.uuid, task)
+                }
+                fetchAllAdminTasks()
+                onSuccess()
+            } catch (e: Exception) {
+                Log.e("OnSiteViewModel", "Failed to update task", e)
+                onSuccess()
+            }
+        }
+    }
+
+    fun deleteAdminTask(
+        taskUuid: String,
+        onSuccess: () -> Unit = {},
+        onError: (String) -> Unit = {}
+    ) {
+        viewModelScope.launch {
+            try {
+                repository.deleteTask(taskUuid)
+                if (!_isOfflineMode.value) {
+                    com.example.api.ApiClient.tasksService.deleteAdminTask(taskUuid)
+                }
+                fetchAllAdminTasks()
+                onSuccess()
+            } catch (e: Exception) {
+                Log.e("OnSiteViewModel", "Failed to delete task", e)
+                onSuccess()
             }
         }
     }
@@ -1517,16 +1702,55 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    private fun parseIsoToMillis(isoString: String?): Long? {
+        if (isoString.isNullOrBlank()) return null
+        return try {
+            val sdf = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", java.util.Locale.US)
+            sdf.timeZone = java.util.TimeZone.getTimeZone("UTC")
+            sdf.parse(isoString)?.time
+        } catch (e: Exception) {
+            try {
+                val sdf2 = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US)
+                sdf2.timeZone = java.util.TimeZone.getTimeZone("UTC")
+                sdf2.parse(isoString)?.time
+            } catch (e2: Exception) {
+                null
+            }
+        }
+    }
+
     private suspend fun fetchRemoteMessages(userUuid: String, otherUuid: String) {
         if (_isOfflineMode.value) return
         try {
+            val existingMessages = repository.getAllMessagesDirect().associateBy { it.uuid }
             val remoteMsgs = com.example.api.ApiClient.messagesService.getUserMessages(userUuid, otherUuid)
             val safeMsgs = remoteMsgs.map { msg ->
-                if ((msg.attachmentData?.length ?: 0) > 1000000) {
-                    msg.copy(attachmentData = null)
-                } else msg
+                val parsedTime = parseIsoToMillis(msg.created_at) ?: msg.timestamp
+                val validTimestamp = if (parsedTime > 0L) parsedTime else System.currentTimeMillis()
+                val sanitized = if ((msg.attachmentData?.length ?: 0) > 1000000) {
+                    msg.copy(attachmentData = null, timestamp = validTimestamp)
+                } else {
+                    msg.copy(timestamp = validTimestamp)
+                }
+                sanitized
             }
             safeMsgs.forEach { msg ->
+                if (!existingMessages.containsKey(msg.uuid) && msg.recipient_uuid == userUuid && msg.sender_uuid != userUuid) {
+                    val senderEmp = repository.getEmployeeById(msg.sender_uuid)
+                    val senderName = senderEmp?.first_name ?: "New Message"
+                    val text = when {
+                        msg.content.isNotBlank() -> msg.content
+                        msg.attachmentType == "photo" -> "Sent a photo"
+                        msg.attachmentType == "document" -> "Sent a document"
+                        msg.attachmentType == "voice" -> "Sent a voice note"
+                        else -> "Sent you a message"
+                    }
+                    try {
+                        NotificationHelper.postMessageNotification(getApplication(), senderName, text, msg.sender_uuid)
+                    } catch (e: Exception) {
+                        Log.e("OnSiteViewModel", "Failed to post message notification", e)
+                    }
+                }
                 repository.insertMessage(msg)
             }
         } catch (e: Exception) {
@@ -1537,13 +1761,35 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
     suspend fun syncUserMessages(userUuid: String) {
         if (_isOfflineMode.value) return
         try {
+            val existingMessages = repository.getAllMessagesDirect().associateBy { it.uuid }
             val remoteMsgs = com.example.api.ApiClient.messagesService.getAllMessagesForUser(userUuid)
             val safeMsgs = remoteMsgs.map { msg ->
-                if ((msg.attachmentData?.length ?: 0) > 1000000) {
-                    msg.copy(attachmentData = null)
-                } else msg
+                val parsedTime = parseIsoToMillis(msg.created_at) ?: msg.timestamp
+                val validTimestamp = if (parsedTime > 0L) parsedTime else System.currentTimeMillis()
+                val sanitized = if ((msg.attachmentData?.length ?: 0) > 1000000) {
+                    msg.copy(attachmentData = null, timestamp = validTimestamp)
+                } else {
+                    msg.copy(timestamp = validTimestamp)
+                }
+                sanitized
             }
             safeMsgs.forEach { msg ->
+                if (!existingMessages.containsKey(msg.uuid) && msg.recipient_uuid == userUuid && msg.sender_uuid != userUuid) {
+                    val senderEmp = repository.getEmployeeById(msg.sender_uuid)
+                    val senderName = senderEmp?.first_name ?: "New Message"
+                    val text = when {
+                        msg.content.isNotBlank() -> msg.content
+                        msg.attachmentType == "photo" -> "Sent a photo"
+                        msg.attachmentType == "document" -> "Sent a document"
+                        msg.attachmentType == "voice" -> "Sent a voice note"
+                        else -> "Sent you a message"
+                    }
+                    try {
+                        NotificationHelper.postMessageNotification(getApplication(), senderName, text, msg.sender_uuid)
+                    } catch (e: Exception) {
+                        Log.e("OnSiteViewModel", "Failed to post message notification", e)
+                    }
+                }
                 repository.insertMessage(msg)
             }
         } catch (e: Exception) {

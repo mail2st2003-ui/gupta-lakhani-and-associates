@@ -16,6 +16,10 @@ object NotificationHelper {
     private const val CHANNEL_NAME_CHECKINS = "Check-In Reminders"
     private const val CHANNEL_DESC_CHECKINS = "Notifications for missed shifts and check-ins"
 
+    private const val CHANNEL_ID_MESSAGES = "onsite_chat_messages"
+    private const val CHANNEL_NAME_MESSAGES = "Chat Messages"
+    private const val CHANNEL_DESC_MESSAGES = "Notifications for incoming chat messages"
+
     fun initNotificationChannels(context: Context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -36,9 +40,35 @@ object NotificationHelper {
                 description = CHANNEL_DESC_CHECKINS
             }
 
+            val messagesChannel = NotificationChannel(
+                CHANNEL_ID_MESSAGES,
+                CHANNEL_NAME_MESSAGES,
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = CHANNEL_DESC_MESSAGES
+            }
+
             manager.createNotificationChannel(alertsChannel)
             manager.createNotificationChannel(checkinsChannel)
+            manager.createNotificationChannel(messagesChannel)
         }
+    }
+
+    fun postMessageNotification(context: Context, senderName: String, messageText: String, senderUuid: String) {
+        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+
+        val displayContent = if (messageText.isBlank()) "Sent you an attachment" else messageText
+
+        val builder = NotificationCompat.Builder(context, CHANNEL_ID_MESSAGES)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle("💬 $senderName")
+            .setContentText(displayContent)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(displayContent))
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setAutoCancel(true)
+
+        val notificationId = senderUuid.hashCode().let { if (it == Int.MIN_VALUE) 0 else Math.abs(it) }
+        manager.notify(notificationId, builder.build())
     }
 
     fun postUrgentAlertNotification(context: Context, title: String, content: String) {

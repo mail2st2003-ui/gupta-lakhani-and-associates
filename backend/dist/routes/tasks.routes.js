@@ -5,6 +5,7 @@ const tasks_controller_1 = require("../controllers/tasks.controller");
 const router = (0, express_1.Router)();
 const tasksController = new tasks_controller_1.TasksController();
 router.get('/', tasksController.getTasks);
+router.get('/:id', tasksController.getTaskById);
 router.post('/', tasksController.createTask);
 router.put('/:id', tasksController.updateTask);
 router.delete('/:id', tasksController.deleteTask);

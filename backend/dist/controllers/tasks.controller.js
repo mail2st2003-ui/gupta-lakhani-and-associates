@@ -14,6 +14,20 @@ class TasksController {
             res.status(400).json({ error: error.message });
         }
     };
+    getTaskById = async (req, res) => {
+        try {
+            const { id } = req.params;
+            const data = await this.tasksService.getTaskById(id);
+            if (!data) {
+                res.status(404).json({ error: 'Task not found' });
+                return;
+            }
+            res.status(200).json(data);
+        }
+        catch (error) {
+            res.status(400).json({ error: error.message });
+        }
+    };
     createTask = async (req, res) => {
         try {
             const data = await this.tasksService.createTask(req.body);
