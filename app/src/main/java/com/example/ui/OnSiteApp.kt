@@ -3135,19 +3135,20 @@ fun AdminTasksTableView(
                                 // 3 Actions: View, Edit, Delete
                                 Row(
                                     modifier = Modifier.width(140.dp),
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     // View Button
-                                    IconButton(
-                                        onClick = {
-                                            selectedTask = task
-                                            taskFormMode = TaskFormMode.VIEW
-                                            showTaskFormDialog = true
-                                        },
+                                    Box(
                                         modifier = Modifier
                                             .size(32.dp)
-                                            .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f), CircleShape)
+                                            .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f), CircleShape)
+                                            .clickable {
+                                                selectedTask = task
+                                                taskFormMode = TaskFormMode.VIEW
+                                                showTaskFormDialog = true
+                                            },
+                                        contentAlignment = Alignment.Center
                                     ) {
                                         Icon(
                                             imageVector = Icons.Default.Visibility,
@@ -3158,15 +3159,16 @@ fun AdminTasksTableView(
                                     }
 
                                     // Edit Button
-                                    IconButton(
-                                        onClick = {
-                                            selectedTask = task
-                                            taskFormMode = TaskFormMode.EDIT
-                                            showTaskFormDialog = true
-                                        },
+                                    Box(
                                         modifier = Modifier
                                             .size(32.dp)
-                                            .background(MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.4f), CircleShape)
+                                            .background(MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f), CircleShape)
+                                            .clickable {
+                                                selectedTask = task
+                                                taskFormMode = TaskFormMode.EDIT
+                                                showTaskFormDialog = true
+                                            },
+                                        contentAlignment = Alignment.Center
                                     ) {
                                         Icon(
                                             imageVector = Icons.Default.Edit,
@@ -3177,14 +3179,15 @@ fun AdminTasksTableView(
                                     }
 
                                     // Delete Button
-                                    IconButton(
-                                        onClick = {
-                                            taskToDelete = task
-                                            showDeleteConfirmDialog = true
-                                        },
+                                    Box(
                                         modifier = Modifier
                                             .size(32.dp)
-                                            .background(MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.4f), CircleShape)
+                                            .background(MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.5f), CircleShape)
+                                            .clickable {
+                                                taskToDelete = task
+                                                showDeleteConfirmDialog = true
+                                            },
+                                        contentAlignment = Alignment.Center
                                     ) {
                                         Icon(
                                             imageVector = Icons.Default.Delete,
@@ -3301,10 +3304,10 @@ fun EmployeeTasksScreen(viewModel: OnSiteViewModel, currentUser: Employee) {
         }
     }
     
-    val tasks by viewModel.currentEmployeeTodoItems.collectAsStateWithLifecycle()
+    val personalTasks by viewModel.currentEmployeeTodoItems.collectAsStateWithLifecycle()
+    val assignedTasks by viewModel.currentEmployeeAssignedTasks.collectAsStateWithLifecycle()
+    val allEmployees by viewModel.employees.collectAsStateWithLifecycle()
     var showAddTaskDialog by remember { mutableStateOf(false) } // For personal to-do list
-    val assignedTasks = tasks.filter { !it.is_personal }
-    val personalTasks = tasks.filter { it.is_personal }
 
     val subTabTitles = if (isAdmin) {
         listOf("All Task", "My Daily To-Do List")
@@ -3359,8 +3362,9 @@ fun EmployeeTasksScreen(viewModel: OnSiteViewModel, currentUser: Employee) {
                     color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
                     shape = RoundedCornerShape(12.dp)
                 ) {
+                    val completedCount = assignedTasks.count { it.status == "Complete" || it.is_completed }
                     Text(
-                        text = "${assignedTasks.count { it.is_completed }}/${assignedTasks.size} Done",
+                        text = "$completedCount/${assignedTasks.size} Done",
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.primary,
@@ -3397,20 +3401,32 @@ fun EmployeeTasksScreen(viewModel: OnSiteViewModel, currentUser: Employee) {
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     items(assignedTasks) { task ->
+                        val isComplete = task.status == "Complete" || task.is_completed
+                        val isDoubt = task.status == "Have a Doubt"
+                        
+                        val creatorEmp = allEmployees.find { it.uuid == task.created_by || it.email == task.created_by }
+                        val creatorName = if (creatorEmp != null) {
+                            "${creatorEmp.first_name ?: ""} ${creatorEmp.last_name ?: ""}".trim().ifBlank { creatorEmp.email }
+                        } else if (task.created_by.isNotBlank()) {
+                            task.created_by
+                        } else {
+                            "Admin"
+                        }
+
                         Card(
                             modifier = Modifier.fillMaxWidth(),
                             colors = CardDefaults.cardColors(
-                                containerColor = when (task.status) {
-                                    "Complete" -> Color(0xFFE8F5E9)
-                                    "Have a Doubt" -> Color(0xFFFFF3E0)
+                                containerColor = when {
+                                    isComplete -> Color(0xFFE8F5E9)
+                                    isDoubt -> Color(0xFFFFF3E0)
                                     else -> MaterialTheme.colorScheme.surface
                                 }
                             ),
                             border = BorderStroke(
                                 1.dp,
-                                when (task.status) {
-                                    "Complete" -> Color(0xFF81C784)
-                                    "Have a Doubt" -> Color(0xFFFFB74D)
+                                when {
+                                    isComplete -> Color(0xFF81C784)
+                                    isDoubt -> Color(0xFFFFB74D)
                                     else -> MaterialTheme.colorScheme.outlineVariant
                                 }
                             )
@@ -3423,25 +3439,25 @@ fun EmployeeTasksScreen(viewModel: OnSiteViewModel, currentUser: Employee) {
                                 ) {
                                     Column(modifier = Modifier.weight(1f)) {
                                         Text(
-                                            text = task.title,
+                                            text = task.title.ifBlank { "Untitled Task" },
                                             style = MaterialTheme.typography.bodyLarge,
                                             fontWeight = FontWeight.Bold,
                                             color = MaterialTheme.colorScheme.onSurface
                                         )
-                                        Text(
-                                            text = task.description,
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            modifier = Modifier.padding(vertical = 4.dp)
-                                        )
-                                        if (false) {  // assignedBy removed
+                                        if (task.description.isNotBlank()) {
                                             Text(
-                                                text = "",
-                                                style = MaterialTheme.typography.labelSmall,
-                                                fontWeight = FontWeight.Bold,
-                                                color = MaterialTheme.colorScheme.primary
+                                                text = task.description,
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                modifier = Modifier.padding(vertical = 4.dp)
                                             )
                                         }
+                                        Text(
+                                            text = "Assigned by: $creatorName",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
                                     }
                                 }
                                 
@@ -3459,15 +3475,15 @@ fun EmployeeTasksScreen(viewModel: OnSiteViewModel, currentUser: Employee) {
                                     // Status Badge
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         Icon(
-                                            imageVector = when (task.status) {
-                                                "Complete" -> Icons.Default.CheckCircle
-                                                "Have a Doubt" -> Icons.Default.Help
+                                            imageVector = when {
+                                                isComplete -> Icons.Default.CheckCircle
+                                                isDoubt -> Icons.Default.Help
                                                 else -> Icons.Default.Pending
                                             },
                                             contentDescription = "Status Icon",
-                                            tint = when (task.status) {
-                                                "Complete" -> Color(0xFF4CAF50)
-                                                "Have a Doubt" -> Color(0xFFFF9800)
+                                            tint = when {
+                                                isComplete -> Color(0xFF4CAF50)
+                                                isDoubt -> Color(0xFFFF9800)
                                                 else -> Color(0xFF9E9E9E)
                                             },
                                             modifier = Modifier.size(16.dp)
@@ -3475,16 +3491,16 @@ fun EmployeeTasksScreen(viewModel: OnSiteViewModel, currentUser: Employee) {
                                         Spacer(modifier = Modifier.width(4.dp))
                                         Text(
                                             text = when {
-                                                // removed isApproved
-                                                task.status == "Complete" -> "Completed"
-                                                task.status == "Have a Doubt" -> "Have a Doubt"
+                                                isComplete -> "Completed"
+                                                isDoubt -> "Have a Doubt"
+                                                task.status.isNotBlank() -> task.status
                                                 else -> "Incomplete"
                                             },
                                             style = MaterialTheme.typography.labelMedium,
                                             fontWeight = FontWeight.Bold,
-                                            color = when (task.status) {
-                                                "Complete" -> Color(0xFF2E7D32)
-                                                "Have a Doubt" -> Color(0xFFD84315)
+                                            color = when {
+                                                isComplete -> Color(0xFF2E7D32)
+                                                isDoubt -> Color(0xFFD84315)
                                                 else -> Color(0xFF616161)
                                             }
                                         )
@@ -3493,9 +3509,9 @@ fun EmployeeTasksScreen(viewModel: OnSiteViewModel, currentUser: Employee) {
                                     // Actions Flow
                                     Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                                         // "Incomplete" Action
-                                        if (task.status != "Incomplete") {
+                                        if (task.status != "Incomplete" && task.status != "Pending") {
                                             IconButton(
-                                                onClick = { viewModel.updateTaskStatus(task, "Incomplete") },
+                                                onClick = { viewModel.updateAssignedTaskStatus(task, "Incomplete") },
                                                 modifier = Modifier.size(28.dp).background(Color(0xFFF5F5F5), CircleShape)
                                             ) {
                                                 Icon(Icons.Default.Refresh, contentDescription = "Mark Incomplete", tint = Color.DarkGray, modifier = Modifier.size(14.dp))
@@ -3504,7 +3520,7 @@ fun EmployeeTasksScreen(viewModel: OnSiteViewModel, currentUser: Employee) {
                                         // "Have a Doubt" Action
                                         if (task.status != "Have a Doubt") {
                                             IconButton(
-                                                onClick = { viewModel.updateTaskStatus(task, "Have a Doubt") },
+                                                onClick = { viewModel.updateAssignedTaskStatus(task, "Have a Doubt") },
                                                 modifier = Modifier.size(28.dp).background(Color(0xFFFFF3E0), CircleShape)
                                             ) {
                                                 Icon(Icons.Default.HelpOutline, contentDescription = "Mark Doubt", tint = Color(0xFFE65100), modifier = Modifier.size(14.dp))
@@ -3513,7 +3529,7 @@ fun EmployeeTasksScreen(viewModel: OnSiteViewModel, currentUser: Employee) {
                                         // "Complete" Action
                                         if (task.status != "Complete") {
                                             IconButton(
-                                                onClick = { viewModel.updateTaskStatus(task, "Complete") },
+                                                onClick = { viewModel.updateAssignedTaskStatus(task, "Complete") },
                                                 modifier = Modifier.size(28.dp).background(Color(0xFFE8F5E9), CircleShape)
                                             ) {
                                                 Icon(Icons.Default.Check, contentDescription = "Mark Complete", tint = Color(0xFF2E7D32), modifier = Modifier.size(14.dp))

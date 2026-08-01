@@ -20,6 +20,10 @@ object NotificationHelper {
     private const val CHANNEL_NAME_MESSAGES = "Chat Messages"
     private const val CHANNEL_DESC_MESSAGES = "Notifications for incoming chat messages"
 
+    private const val CHANNEL_ID_TASKS = "onsite_assigned_tasks"
+    private const val CHANNEL_NAME_TASKS = "Assigned Tasks"
+    private const val CHANNEL_DESC_TASKS = "Notifications for newly assigned tasks"
+
     fun initNotificationChannels(context: Context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -48,10 +52,36 @@ object NotificationHelper {
                 description = CHANNEL_DESC_MESSAGES
             }
 
+            val tasksChannel = NotificationChannel(
+                CHANNEL_ID_TASKS,
+                CHANNEL_NAME_TASKS,
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = CHANNEL_DESC_TASKS
+            }
+
             manager.createNotificationChannel(alertsChannel)
             manager.createNotificationChannel(checkinsChannel)
             manager.createNotificationChannel(messagesChannel)
+            manager.createNotificationChannel(tasksChannel)
         }
+    }
+
+    fun postTaskAssignedNotification(context: Context, taskTitle: String, assignedByName: String, taskUuid: String) {
+        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+
+        val displayContent = if (assignedByName.isNotBlank()) "Assigned by $assignedByName" else "You have a new assigned task"
+
+        val builder = NotificationCompat.Builder(context, CHANNEL_ID_TASKS)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle("📋 New Task: $taskTitle")
+            .setContentText(displayContent)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(displayContent))
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setAutoCancel(true)
+
+        val notificationId = taskUuid.hashCode().let { if (it == Int.MIN_VALUE) 0 else Math.abs(it) }
+        manager.notify(notificationId, builder.build())
     }
 
     fun postMessageNotification(context: Context, senderName: String, messageText: String, senderUuid: String) {

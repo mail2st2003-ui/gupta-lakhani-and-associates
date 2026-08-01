@@ -53,6 +53,9 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
     private val _isAdmin = MutableStateFlow(false)
     val isAdmin: StateFlow<Boolean> = _isAdmin.asStateFlow()
 
+    // Tracks when the current session started - notifications only fire for events after this time
+    @Volatile private var _sessionStartTimeMs: Long = System.currentTimeMillis()
+
     // Database Flows
     val employees: StateFlow<List<Employee>>
     val allAttendanceLogs: StateFlow<List<AttendanceLog>>
@@ -65,6 +68,7 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
     
     // Employee-specific Flow
     val currentEmployeeTodoItems: StateFlow<List<TodoItem>>
+    val currentEmployeeAssignedTasks: StateFlow<List<Task>>
     val currentEmployeeLogs: StateFlow<List<AttendanceLog>>
 
     // Geofencing Configurations
@@ -234,6 +238,18 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
             initialValue = emptyList()
         )
 
+        currentEmployeeAssignedTasks = _currentUser.flatMapLatest { user ->
+            if (user != null) {
+                repository.getTasksByAssignee(user.uuid)
+            } else {
+                flowOf(emptyList())
+            }
+        }.stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptyList()
+        )
+
         currentEmployeeLogs = _currentUser.flatMapLatest { user ->
             if (user != null) {
                 repository.getAttendanceLogsForEmployee(user.uuid)
@@ -245,6 +261,16 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
             started = SharingStarted.WhileSubscribed(5000),
             initialValue = emptyList()
         )
+
+        // Clean up legacy mocked tasks if present
+        viewModelScope.launch {
+            try {
+                repository.deleteTask("TASK-001")
+                repository.deleteTask("TASK-002")
+            } catch (e: Exception) {
+                Log.e("OnSiteViewModel", "Failed to clean legacy mock tasks", e)
+            }
+        }
 
         // Seed initial data once if the database is completely empty on first install
         viewModelScope.launch {
@@ -357,37 +383,7 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
             )
         )
 
-        // Seed initial admin tasks
-        repository.insertTask(
-            Task(
-                uuid = "TASK-001",
-                title = "GST Filing Q1",
-                description = "Review and file the Q1 GST returns for client portfolio A.",
-                created_by = "ADMIN-01",
-                assigned_to = "EMP-RS-54",
-                assigned_by = "ADMIN-01",
-                created_at = "01 Aug 2026, 10:00 AM",
-                assigned_at = "01 Aug 2026, 10:30 AM",
-                status = "In Progress",
-                priority = "High",
-                isSynced = true
-            )
-        )
-        repository.insertTask(
-            Task(
-                uuid = "TASK-002",
-                title = "Audit Voucher Verification",
-                description = "Verify physical audit vouchers and bank reconciliations.",
-                created_by = "ADMIN-01",
-                assigned_to = "EMP-PP-88",
-                assigned_by = "ADMIN-01",
-                created_at = "02 Aug 2026, 09:15 AM",
-                assigned_at = "02 Aug 2026, 09:30 AM",
-                status = "Pending",
-                priority = "Medium",
-                isSynced = true
-            )
-        )
+        // Note: Tasks are purely fetched and synchronized from the backend API/Supabase database. No mock seeds.
 
         // Seed initial tasks
         repository.insertTodoItem(
@@ -605,6 +601,8 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
         _currentUser.value = employee
         _isManager.value = (employee.role == "Manager")
         _isAdmin.value = employee.role.equals("Admin", ignoreCase = true)
+        // Reset session start time so only genuinely new events trigger notifications
+        _sessionStartTimeMs = System.currentTimeMillis()
         try {
             val moshi = com.squareup.moshi.Moshi.Builder().add(com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory()).build()
             val json = moshi.adapter(Employee::class.java).toJson(employee)
@@ -786,14 +784,18 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
             if (_isFirestoreEnabled.value) firestoreSuccess = false
         }
 
-        // 4. Messages (via Node.js Backend)
+        // 4. Messages & Tasks (via Node.js Backend with background notifications)
         try {
             val user = _currentUser.value
             if (user != null) {
                 syncUserMessages(user.uuid)
+                syncAssignedTasksWithNotifications(user.uuid)
+                if (user.role.equals("Admin", ignoreCase = true)) {
+                    fetchAllAdminTasks()
+                }
             }
         } catch (e: Exception) {
-            Log.e("OnSiteViewModel", "Sync messages error", e)
+            Log.e("OnSiteViewModel", "Sync messages and tasks error", e)
         }
 
         // 5. System Alerts
@@ -1118,7 +1120,7 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
             )
             try {
                 if (!_isOfflineMode.value) {
-                    com.example.api.ApiClient.tasksService.createTask(task)
+                    com.example.api.ApiClient.todosService.createTodo(task)
                 }
                 repository.insertTodoItem(task)
             } catch (e: Exception) {
@@ -1619,7 +1621,8 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
             selectUserSession(safeUser)
             fetchAllUsersFromServer()
             fetchUserProfile(safeUser.uuid)
-            syncUserMessages(safeUser.uuid)
+            // NOTE: Message and task notifications are handled by the background sync loop (syncAllWithCloud).
+            // Do NOT call syncUserMessages here to avoid spurious notifications at login time.
         }
     }
 
@@ -1660,16 +1663,74 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    suspend fun syncAssignedTasksWithNotifications(userUuid: String) {
+        if (_isOfflineMode.value) return
+        try {
+            val localTasks = repository.getAllTasksDirect().associateBy { it.uuid }
+            val remoteTasks = com.example.api.ApiClient.tasksService.getTasks(userUuid)
+            val safeTasks = remoteTasks.map { it.copy(isSynced = true) }
+            
+            // Check for newly assigned tasks to trigger notification
+            // Only fire for tasks that weren't previously known locally and arrived after session started
+            safeTasks.forEach { task ->
+                val isNewLocal = !localTasks.containsKey(task.uuid)
+                val isAssignedToMe = task.assigned_to == userUuid && task.created_by != userUuid
+                val taskTimestampMs = parseIsoToMillis(task.assigned_at)
+                    ?: parseIsoToMillis(task.created_at)
+                    ?: 0L
+                val arrivedAfterLogin = taskTimestampMs == 0L || taskTimestampMs > _sessionStartTimeMs
+                if (isNewLocal && isAssignedToMe && arrivedAfterLogin) {
+                    val creatorEmp = repository.getEmployeeById(task.created_by)
+                    val creatorName = if (creatorEmp != null) {
+                        "${creatorEmp.first_name ?: ""} ${creatorEmp.last_name ?: ""}".trim().ifBlank { creatorEmp.email }
+                    } else {
+                        "Management"
+                    }
+                    try {
+                        NotificationHelper.postTaskAssignedNotification(getApplication(), task.title, creatorName, task.uuid)
+                    } catch (e: Exception) {
+                        Log.e("OnSiteViewModel", "Failed to post task notification", e)
+                    }
+                }
+            }
+
+            if (safeTasks.isNotEmpty()) {
+                val remoteUuids = safeTasks.map { it.uuid }.toSet()
+                val currentAssignedLocal = repository.getAllTasksDirect().filter { it.assigned_to == userUuid }
+                currentAssignedLocal.forEach { localTask ->
+                    if (localTask.uuid !in remoteUuids && localTask.isSynced) {
+                        repository.deleteTask(localTask.uuid)
+                    }
+                }
+                repository.insertTasks(safeTasks)
+            }
+        } catch (e: Exception) {
+            Log.e("OnSiteViewModel", "Failed to sync assigned tasks", e)
+        }
+    }
+
     fun fetchRemoteAssignedTasksForUser(userUuid: String) {
         viewModelScope.launch {
-            if (_isOfflineMode.value) return@launch
-            try {
-                val remoteTasks = com.example.api.ApiClient.tasksService.getTasks(userUuid)
-                remoteTasks.forEach { task ->
-                    repository.insertTodoItem(task.copy(isSynced = true, is_personal = false))
+            syncAssignedTasksWithNotifications(userUuid)
+        }
+    }
+
+    fun updateAssignedTaskStatus(task: Task, status: String) {
+        viewModelScope.launch {
+            val updatedTask = task.copy(
+                status = status,
+                is_completed = (status == "Complete"),
+                isSynced = !_isOfflineMode.value
+            )
+            repository.updateTask(updatedTask)
+
+            if (!_isOfflineMode.value) {
+                try {
+                    com.example.api.ApiClient.tasksService.updateAdminTask(updatedTask.uuid, updatedTask)
+                    syncAssignedTasksWithNotifications(updatedTask.assigned_to)
+                } catch (e: Exception) {
+                    Log.e("OnSiteViewModel", "Failed to update assigned task status", e)
                 }
-            } catch (e: Exception) {
-                Log.e("OnSiteViewModel", "Failed to fetch remote tasks", e)
             }
         }
     }
@@ -1774,7 +1835,11 @@ class OnSiteViewModel(application: Application) : AndroidViewModel(application) 
                 sanitized
             }
             safeMsgs.forEach { msg ->
-                if (!existingMessages.containsKey(msg.uuid) && msg.recipient_uuid == userUuid && msg.sender_uuid != userUuid) {
+                val isNew = !existingMessages.containsKey(msg.uuid)
+                val isForMe = msg.recipient_uuid == userUuid && msg.sender_uuid != userUuid
+                // Only notify for messages that arrived after this session started
+                val arrivedAfterLogin = msg.timestamp > _sessionStartTimeMs
+                if (isNew && isForMe && arrivedAfterLogin) {
                     val senderEmp = repository.getEmployeeById(msg.sender_uuid)
                     val senderName = senderEmp?.first_name ?: "New Message"
                     val text = when {

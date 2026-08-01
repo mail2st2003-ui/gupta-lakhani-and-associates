@@ -8,7 +8,8 @@ export class TasksRepository {
       .order('created_at', { ascending: false });
 
     if (assignedTo) {
-      query = query.or(`assigned_to.eq.${assignedTo},created_by.eq.${assignedTo}`);
+      // Filter strictly by assigned_to for employee assigned tasks view
+      query = query.eq('assigned_to', assignedTo);
     }
 
     const { data, error } = await query;

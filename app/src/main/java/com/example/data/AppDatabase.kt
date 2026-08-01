@@ -34,7 +34,7 @@ interface AppDao {
     @Query("DELETE FROM tasks WHERE uuid = :uuid")
     suspend fun deleteTaskById(uuid: String)
 
-    @Query("SELECT * FROM tasks WHERE assigned_to = :userUuid OR created_by = :userUuid")
+    @Query("SELECT * FROM tasks WHERE assigned_to = :userUuid")
     fun getTasksByAssigneeFlow(userUuid: String): Flow<List<Task>>
 
 

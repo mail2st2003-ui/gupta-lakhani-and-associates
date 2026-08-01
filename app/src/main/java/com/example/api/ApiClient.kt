@@ -166,7 +166,7 @@ interface TasksApiService {
     @GET("api/tasks")
     suspend fun getTasks(
         @Query("employee_id") employeeId: String
-    ): List<com.example.data.TodoItem>
+    ): List<com.example.data.Task>
 
     @GET("api/tasks")
     suspend fun getAllAdminTasks(): List<com.example.data.Task>
@@ -181,7 +181,7 @@ interface TasksApiService {
     suspend fun deleteAdminTask(@Path("id") id: String): Any
 
     @POST("api/tasks")
-    suspend fun createTask(@Body task: com.example.data.TodoItem): Any
+    suspend fun createTask(@Body task: com.example.data.Task): Any
 }
 
 interface TodosApiService {
